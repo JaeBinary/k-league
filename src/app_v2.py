@@ -1,90 +1,117 @@
+import time
+import csv
+from typing import Dict
+
 # ② Third-party Library
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
 
-# ③ Local Modules
-from src.driver.chrome_driver import build_driver
+# --- 상수 설정 ---
+year = 2023
+game = 5
+BASE_URL = "https://www.kleague.com/index.do"
+XPATH_TEMPLATE = "//ul[contains(@class, 'game-sub-info')]//li[contains(text(), '{}')]"
+CSS_DATE_SELECTOR = "div.versus > p"
+CSV_FILENAME = f"kleague_match_info_{year}.csv" # 파일명 변경
 
-def get_info(driver, keyword):
-    """
-    '관중수', '날씨' 등의 키워드가 포함된 항목의 값을 가져오고,
-    키워드에 따라 불필요한 기호(°C, %, 콤마)를 자동으로 제거함.
-    """
+# ---------------------------------------------------------
+# 1. 데이터 정제 및 추출 함수들
+# ---------------------------------------------------------
+def get_clean_info(driver: WebDriver, keyword: str) -> str:
+    """기호(°C, %, ,)를 제거하고 순수 데이터만 추출"""
     try:
-        # 1. 요소 찾기 및 텍스트 추출
-        xpath = f"//ul[contains(@class, 'game-sub-info')]//li[contains(text(), '{keyword}')]"
-        text = driver.find_element(By.XPATH, xpath).text
+        target_elem = driver.find_element(By.XPATH, XPATH_TEMPLATE.format(keyword))
+        value = target_elem.text.split(":")[-1].strip()
+
+        replacements = {"온도": "°C", "습도": "%", "관중수": ","}
+        if keyword in replacements:
+            value = value.replace(replacements[keyword], "")
         
-        # 2. 데이터 값만 분리 ("온도 : 10.0°C" -> "10.0°C")
-        value = text.split(":")[-1].strip()
-
-        # 3. 키워드별 맞춤형 데이터 정제 (여기가 핵심!)
-        if keyword == "온도":
-            value = value.replace("°C", "")  # '°C' 제거
-        elif keyword == "습도":
-            value = value.replace("%", "")   # '%' 제거
-        elif keyword == "관중수":
-            value = value.replace(",", "")   # 쉼표(,) 제거
-
-        # 4. 최종 결과 반환 (앞뒤 공백 한 번 더 제거)
         return value.strip()
-
     except:
-        return "" # 데이터가 없으면 빈 문자열 반환
+        return "" 
 
-def main() -> None:
+def get_match_datetime(driver: WebDriver) -> str:
+    """일시 추출 및 DB 포맷 변환"""
+    try:
+        date_text = driver.find_element(By.CSS_SELECTOR, CSS_DATE_SELECTOR).text
+        parts = date_text.split()
+        return f"{parts[0]} {parts[-1]}".replace("/", "-") + ":00"
+    except:
+        return ""
 
-    """메인 자동화 프로세스 실행"""
+def get_teams(driver: WebDriver) -> tuple:
+    """[추가됨] 홈팀과 원정팀 이름 추출"""
+    try:
+        # id가 gameId인 select 태그에서 현재 선택된 option의 텍스트 추출
+        full_text = driver.find_element(By.CSS_SELECTOR, "#gameId option:checked").text
+        # "포항vs대전 (02/15)" -> "포항", "대전" 분리
+        teams_only = full_text.split("(")[0].strip() # 날짜 제거
+        
+        if "vs" in teams_only:
+            home, away = teams_only.split("vs")
+            return home.strip(), away.strip()
+        return "Unknown", "Unknown"
+    except:
+        return "Unknown", "Unknown"
 
-    # 설정 로드 및 드라이버 초기화
-    driver = build_driver()
+def extract_game_data(driver: WebDriver, game_id: int) -> Dict[str, str]:
+    """페이지 이동 후 데이터 수집"""
+    url = f"https://www.kleague.com/match.do?year={year}&meetSeq=1&gameId={game_id}&leagueId=1&startTabNum=1"
+    driver.get(url)
+    time.sleep(1) 
 
+    # 홈/원정 팀 가져오기
+    home_team, away_team = get_teams(driver)
+
+    return {
+        "game_id": game_id,
+        "datetime": get_match_datetime(driver),
+        "home_team": home_team,  # 추가됨
+        "away_team": away_team,  # 추가됨
+        "stadium": get_clean_info(driver, "경기장"),
+        "audience": get_clean_info(driver, "관중수"),
+        "weather": get_clean_info(driver, "날씨"),
+        "temp": get_clean_info(driver, "온도"),
+        "humidity": get_clean_info(driver, "습도"),
+        "broadcast": get_clean_info(driver, "중계정보")
+    }
+
+# ---------------------------------------------------------
+# 2. 메인 실행 함수
+# ---------------------------------------------------------
+def main():
+    print("🚀 브라우저를 실행합니다...")
     driver = webdriver.Chrome()
     driver.maximize_window()
-    driver.get("https://www.kleague.com/index.do")
-    url = f"https://www.kleague.com/match.do?year=2025&meetSeq=1&gameId=1&leagueId=1&startTabNum=1"
-    driver.get(url)
+    driver.get(BASE_URL)
+    time.sleep(2)
 
-    # --- 1. 관중수 추출 ---
-    audience = get_info(driver, "관중수")
-    print(f"관중수: {audience}")
-    # 관중수: 10519
+    try:
+        with open(CSV_FILENAME, mode='w', encoding='utf-8-sig', newline='') as file:
+            # 헤더에 home_team, away_team 추가
+            fieldnames = ['game_id', 'datetime', 'home_team', 'away_team', 'stadium', 'audience', 'weather', 'temp', 'humidity', 'broadcast']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            print(f"📂 '{CSV_FILENAME}' 생성 완료. 수집 시작...")
 
-    # --- 2. 경기장 추출 ---
-    stadium = get_info(driver, "경기장")
-    print(f"경기장: {stadium}")
-    # 경기장: 포항 스틸야드
+            for game_id in range(1, game+1):
+                try:
+                    data = extract_game_data(driver, game_id)
+                    writer.writerow(data)
+                    print(f"✅ [{game_id}/{game}] {data['home_team']} vs {data['away_team']} | {data['datetime']}")
+                
+                except Exception as e:
+                    print(f"⚠️ [{game_id}] 에러 발생: {e}")
 
-    # --- 3. 날씨 추출 ---
-    weather = get_info(driver, "날씨")
-    print(f"날씨: {weather}")
-    # 날씨: 맑음
+    except Exception as e:
+        print(f"❌ 오류: {e}")
+    
+    finally:
+        print("🏁 작업 완료.")
+        driver.quit()
 
-    # --- 4. 온도(°C) 추출 ---
-    temperature = get_info(driver, "온도")
-    print(f"온도: {temperature}")
-    # 온도: 10.0
-
-    # --- 5. 습도(%) 추출 ---
-    humidity = get_info(driver, "습도")
-    print(f"습도: {humidity}")
-    # 습도: 43
-
-    # --- 6. 중계정보 ---
-    broadcast = get_info(driver, "중계정보")
-    print(f"중계정보: {broadcast}")
-    # 중계정보: skySports, COUPANGPLAY
-
-    # --- 7. 경기 일시 추출 및 DB용 포맷 변환 ---
-    date_text = driver.find_element(By.CSS_SELECTOR, "div.versus > p").text
-    parts = date_text.split()
-    raw_datetime = f"{parts[0]} {parts[-1]}"
-    db_date = raw_datetime.replace("/", "-") + ":00"
-    print(f"DB용 날짜/시간: {db_date}")
-    # DB용 날짜/시간: 2025-02-15 13:00:00
-
-    # 작업 완료 및 브라우저 종료
-    input("🔍 작업 완료! Enter 키를 누르면 브라우저가 종료됩니다...")
-    driver.quit()
-
-    return None
+if __name__ == "__main__":
+    main()

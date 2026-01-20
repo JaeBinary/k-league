@@ -1,6 +1,3 @@
-# ① Standard Library
-from os import fspath
-
 # ② Third-party Library
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options

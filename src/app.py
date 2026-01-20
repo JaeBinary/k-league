@@ -1,39 +1,67 @@
 import time
 import csv
-from typing import Optional, Dict
+from typing import Dict
 
-# ② Third-party Library
+# Selenium
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import Select # Select 기능 사용 시 필요
+
+# Rich (시각화)
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
+from rich.theme import Theme
+from rich.table import Table
 
 # --- 상수 설정 ---
-year = 2023
-BASE_URL = "https://www.kleague.com/match.do"
+YEAR = 2023
+TARGET_GAMES = 5
+BASE_URL = "https://www.kleague.com/index.do"
+MATCH_URL_TEMPLATE = "https://www.kleague.com/match.do?year={}&meetSeq=1&gameId={}&leagueId=1&startTabNum=1"
+CSV_FILENAME = f"kleague_match_info_{YEAR}.csv"
+
 XPATH_TEMPLATE = "//ul[contains(@class, 'game-sub-info')]//li[contains(text(), '{}')]"
 CSS_DATE_SELECTOR = "div.versus > p"
-CSV_FILENAME = f"kleague_match_info_{year}.csv" # 파일명 변경
+
+# 테마 설정 (색상 예쁘게)
+custom_theme = Theme({
+    "id": "bold cyan",
+    "date": "dim white",
+    "team": "bold yellow",
+    "vs": "dim white",
+    "stadium": "green",
+    "audience": "bold magenta",
+})
+console = Console(theme=custom_theme)
 
 # ---------------------------------------------------------
-# 1. 데이터 정제 및 추출 함수들
+# [기능 1] 브라우저 내부 로그 차단 (TensorFlow 경고 삭제)
+# ---------------------------------------------------------
+def get_silent_driver():
+    options = webdriver.ChromeOptions()
+    # 불필요한 로그 숨기기
+    options.add_argument("--log-level=3") 
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    
+    driver = webdriver.Chrome(options=options)
+    driver.maximize_window()
+    return driver
+
+# ---------------------------------------------------------
+# [기능 2] 데이터 추출 함수들 (로직 동일)
 # ---------------------------------------------------------
 def get_clean_info(driver: WebDriver, keyword: str) -> str:
-    """기호(°C, %, ,)를 제거하고 순수 데이터만 추출"""
     try:
         target_elem = driver.find_element(By.XPATH, XPATH_TEMPLATE.format(keyword))
         value = target_elem.text.split(":")[-1].strip()
-
         replacements = {"온도": "°C", "습도": "%", "관중수": ","}
         if keyword in replacements:
             value = value.replace(replacements[keyword], "")
-        
         return value.strip()
     except:
         return "" 
 
 def get_match_datetime(driver: WebDriver) -> str:
-    """일시 추출 및 DB 포맷 변환"""
     try:
         date_text = driver.find_element(By.CSS_SELECTOR, CSS_DATE_SELECTOR).text
         parts = date_text.split()
@@ -42,13 +70,9 @@ def get_match_datetime(driver: WebDriver) -> str:
         return ""
 
 def get_teams(driver: WebDriver) -> tuple:
-    """[추가됨] 홈팀과 원정팀 이름 추출"""
     try:
-        # id가 gameId인 select 태그에서 현재 선택된 option의 텍스트 추출
         full_text = driver.find_element(By.CSS_SELECTOR, "#gameId option:checked").text
-        # "포항vs대전 (02/15)" -> "포항", "대전" 분리
-        teams_only = full_text.split("(")[0].strip() # 날짜 제거
-        
+        teams_only = full_text.split("(")[0].strip()
         if "vs" in teams_only:
             home, away = teams_only.split("vs")
             return home.strip(), away.strip()
@@ -57,19 +81,17 @@ def get_teams(driver: WebDriver) -> tuple:
         return "Unknown", "Unknown"
 
 def extract_game_data(driver: WebDriver, game_id: int) -> Dict[str, str]:
-    """페이지 이동 후 데이터 수집"""
-    url = f"{BASE_URL}?year={year}&meetSeq=1&gameId={game_id}&leagueId=1&startTabNum=1"
+    url = MATCH_URL_TEMPLATE.format(YEAR, game_id)
     driver.get(url)
-    time.sleep(1) 
+    time.sleep(1) # 페이지 로딩 대기
 
-    # 홈/원정 팀 가져오기
     home_team, away_team = get_teams(driver)
 
     return {
         "game_id": game_id,
         "datetime": get_match_datetime(driver),
-        "home_team": home_team,  # 추가됨
-        "away_team": away_team,  # 추가됨
+        "home_team": home_team,
+        "away_team": away_team,
         "stadium": get_clean_info(driver, "경기장"),
         "audience": get_clean_info(driver, "관중수"),
         "weather": get_clean_info(driver, "날씨"),
@@ -79,37 +101,81 @@ def extract_game_data(driver: WebDriver, game_id: int) -> Dict[str, str]:
     }
 
 # ---------------------------------------------------------
-# 2. 메인 실행 함수
+# [기능 3] 메인 실행 (디자인 업그레이드)
 # ---------------------------------------------------------
 def main():
-    print("🚀 브라우저를 실행합니다...")
-    driver = webdriver.Chrome()
-    driver.maximize_window()
+    driver = None
+    
+    # 1. 깔끔한 시작
+    console.clear()
+    console.rule(f"[bold blue]K-League {YEAR} Data Scraper")
+    
+    with console.status("[bold green]브라우저 실행 중 (로그 차단 모드)...", spinner="dots"):
+        driver = get_silent_driver() # 조용한 드라이버 호출
+        driver.get(BASE_URL)
+        time.sleep(2)
+    
+    console.print(f"[bold blue]🚀 준비 완료! (대상: 1~{TARGET_GAMES}경기)[/]\n")
+
+    # 2. 헤더 출력 (표 처럼 보이게)
+    # ID(4칸) | 날짜(20칸) | 홈팀(6칸) vs 원정팀(6칸) | 관중(10칸) | 경기장
+    header = f" {'ID':^3} │ {'Date Time':^19} │ {'Matchup':^18} │ {'Audience':^8} │ {'Stadium'}"
+    console.print(f"[dim]{header}[/]")
+    console.print("[dim]─────┼─────────────────────┼────────────────────┼──────────┼────────────────[/]")
 
     try:
         with open(CSV_FILENAME, mode='w', encoding='utf-8-sig', newline='') as file:
-            # 헤더에 home_team, away_team 추가
             fieldnames = ['game_id', 'datetime', 'home_team', 'away_team', 'stadium', 'audience', 'weather', 'temp', 'humidity', 'broadcast']
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
             
-            print(f"📂 '{CSV_FILENAME}' 생성 완료. 수집 시작...")
-
-            for game_id in range(1, 229):
-                try:
-                    data = extract_game_data(driver, game_id)
-                    writer.writerow(data)
-                    print(f"✅ [{game_id}/228] {data['home_team']} vs {data['away_team']} | {data['datetime']}")
+            # Progress Bar 디자인 개선
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]Game {task.fields[game_id]}", justify="right"),
+                BarColumn(bar_width=30, style="dim white", complete_style="green"),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                console=console,
+                transient=False # 완료 후에도 바 유지
+            ) as progress:
                 
-                except Exception as e:
-                    print(f"⚠️ [{game_id}] 에러 발생: {e}")
+                task_id = progress.add_task("Processing", total=TARGET_GAMES, game_id="Wait")
+
+                for game_id in range(1, TARGET_GAMES + 1):
+                    progress.update(task_id, game_id=str(game_id))
+                    
+                    try:
+                        data = extract_game_data(driver, game_id)
+                        writer.writerow(data)
+                        
+                        # [핵심] 줄 맞춤 포맷팅 (f-string의 정렬 기능 활용)
+                        # :^6 (가운데 정렬 6칸), :>8 (오른쪽 정렬 8칸) 등 사용
+                        if data['home_team'] == "Unknown":
+                             progress.console.print(f" {game_id:03d} │ [red]데이터 없음 (Pass)[/]")
+                        else:
+                            # 예쁘게 한 줄 출력
+                            row_str = (
+                                f" [id]{game_id:03d}[/] │ "
+                                f"[date]{data['datetime']}[/] │ "
+                                f"[team]{data['home_team']:>5}[/] [vs]vs[/] [team]{data['away_team']:<5}[/] │ "
+                                f"[audience]{data['audience']:>6}명[/] │ "
+                                f"[stadium]{data['stadium']}[/]"
+                            )
+                            progress.console.print(row_str)
+                    
+                    except Exception as e:
+                        progress.console.print(f"[bold red]❌ Error [{game_id}]: {e}[/]")
+
+                    progress.update(task_id, advance=1)
 
     except Exception as e:
-        print(f"❌ 오류: {e}")
+        console.print_exception()
     
     finally:
-        print("🏁 작업 완료.")
-        driver.quit()
+        console.rule("[bold green]작업 완료")
+        if driver:
+            driver.quit()
 
 if __name__ == "__main__":
     main()
