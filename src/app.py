@@ -151,7 +151,7 @@ def main():
                         # [핵심] 줄 맞춤 포맷팅 (f-string의 정렬 기능 활용)
                         # :^6 (가운데 정렬 6칸), :>8 (오른쪽 정렬 8칸) 등 사용
                         if data['home_team'] == "Unknown":
-                             progress.console.print(f" {game_id:03d} │ [red]데이터 없음 (Pass)[/]")
+                            progress.console.print(f" {game_id:03d} │ [red]데이터 없음 (Pass)[/]")
                         else:
                             # 예쁘게 한 줄 출력
                             row_str = (
