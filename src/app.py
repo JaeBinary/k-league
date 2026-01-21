@@ -15,7 +15,7 @@ from rich.table import Table
 
 # --- 상수 설정 ---
 YEAR = 2023
-TARGET_GAMES = 5
+TARGET_GAMES = 228
 BASE_URL = "https://www.kleague.com/index.do"
 MATCH_URL_TEMPLATE = "https://www.kleague.com/match.do?year={}&meetSeq=1&gameId={}&leagueId=1&startTabNum=1"
 CSV_FILENAME = f"kleague_match_info_{YEAR}.csv"
@@ -121,7 +121,7 @@ def main():
     # ID(4칸) | 날짜(20칸) | 홈팀(6칸) vs 원정팀(6칸) | 관중(10칸) | 경기장
     header = f" {'ID':^3} │ {'Date Time':^19} │ {'Matchup':^18} │ {'Audience':^8} │ {'Stadium'}"
     console.print(f"[dim]{header}[/]")
-    console.print("[dim]─────┼─────────────────────┼────────────────────┼──────────┼────────────────[/]")
+    console.print("[dim]─────┼─────────────────────┼────────────────────┼──────────┼──────────────────────[/]")
 
     try:
         with open(CSV_FILENAME, mode='w', encoding='utf-8-sig', newline='') as file:
