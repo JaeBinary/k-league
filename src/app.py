@@ -11,7 +11,6 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from rich.theme import Theme
-from rich.table import Table
 
 # --- 상수 설정 ---
 YEAR = 2023
