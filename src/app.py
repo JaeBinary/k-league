@@ -1,180 +1,144 @@
-import time
-import csv
-from typing import Dict
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
 
-# Selenium
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webdriver import WebDriver
-
-# Rich (시각화)
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
-from rich.theme import Theme
+from rich.progress import track
 
-# --- 상수 설정 ---
-YEAR = 2023
-TARGET_GAMES = 228
-BASE_URL = "https://www.kleague.com/index.do"
-MATCH_URL_TEMPLATE = "https://www.kleague.com/match.do?year={}&meetSeq=1&gameId={}&leagueId=1&startTabNum=1"
-CSV_FILENAME = f"kleague_match_info_{YEAR}.csv"
-
-XPATH_TEMPLATE = "//ul[contains(@class, 'game-sub-info')]//li[contains(text(), '{}')]"
-CSS_DATE_SELECTOR = "div.versus > p"
-
-# 테마 설정 (색상 예쁘게)
-custom_theme = Theme({
-    "id": "bold cyan",
-    "date": "dim white",
-    "team": "bold yellow",
-    "vs": "dim white",
-    "stadium": "green",
-    "audience": "bold magenta",
-})
-console = Console(theme=custom_theme)
-
-# ---------------------------------------------------------
-# [기능 1] 브라우저 내부 로그 차단 (TensorFlow 경고 삭제)
-# ---------------------------------------------------------
-def get_silent_driver():
-    options = webdriver.ChromeOptions()
-    # 불필요한 로그 숨기기
-    options.add_argument("--log-level=3") 
-    options.add_experimental_option('excludeSwitches', ['enable-logging'])
+def extract_value(text, remove_char=""):
+    """
+    문자열에서 콜론(:) 뒤의 값을 추출하고, 특정 문자를 제거한 후 공백을 정리합니다.
     
-    driver = webdriver.Chrome(options=options)
-    driver.maximize_window()
-    return driver
-
-# ---------------------------------------------------------
-# [기능 2] 데이터 추출 함수들 (로직 동일)
-# ---------------------------------------------------------
-def get_clean_info(driver: WebDriver, keyword: str) -> str:
-    try:
-        target_elem = driver.find_element(By.XPATH, XPATH_TEMPLATE.format(keyword))
-        value = target_elem.text.split(":")[-1].strip()
-        replacements = {"온도": "°C", "습도": "%", "관중수": ","}
-        if keyword in replacements:
-            value = value.replace(replacements[keyword], "")
-        return value.strip()
-    except:
-        return "" 
-
-def get_match_datetime(driver: WebDriver) -> str:
-    try:
-        date_text = driver.find_element(By.CSS_SELECTOR, CSS_DATE_SELECTOR).text
-        parts = date_text.split()
-        return f"{parts[0]} {parts[-1]}".replace("/", "-") + ":00"
-    except:
-        return ""
-
-def get_teams(driver: WebDriver) -> tuple:
-    try:
-        full_text = driver.find_element(By.CSS_SELECTOR, "#gameId option:checked").text
-        teams_only = full_text.split("(")[0].strip()
-        if "vs" in teams_only:
-            home, away = teams_only.split("vs")
-            return home.strip(), away.strip()
-        return "Unknown", "Unknown"
-    except:
-        return "Unknown", "Unknown"
-
-def extract_game_data(driver: WebDriver, game_id: int) -> Dict[str, str]:
-    url = MATCH_URL_TEMPLATE.format(YEAR, game_id)
-    driver.get(url)
-    time.sleep(1) # 페이지 로딩 대기
-
-    home_team, away_team = get_teams(driver)
-
-    return {
-        "game_id": game_id,
-        "datetime": get_match_datetime(driver),
-        "home_team": home_team,
-        "away_team": away_team,
-        "stadium": get_clean_info(driver, "경기장"),
-        "audience": get_clean_info(driver, "관중수"),
-        "weather": get_clean_info(driver, "날씨"),
-        "temp": get_clean_info(driver, "온도"),
-        "humidity": get_clean_info(driver, "습도"),
-        "broadcast": get_clean_info(driver, "중계정보")
-    }
-
-# ---------------------------------------------------------
-# [기능 3] 메인 실행 (디자인 업그레이드)
-# ---------------------------------------------------------
-def main():
-    driver = None
+    Args:
+        text (str): '항목 : 값' 형태의 원본 문자열 (예: "관중수 : 10,519")
+        remove_char (str, optional): 값에서 제거할 특정 문자나 기호 (예: "%", "°C"). 
+                                     기본값은 빈 문자열("")입니다.
     
-    # 1. 깔끔한 시작
-    console.clear()
-    console.rule(f"[bold blue]K-League {YEAR} Data Scraper")
-    
-    with console.status("[bold green]브라우저 실행 중 (로그 차단 모드)...", spinner="dots"):
-        driver = get_silent_driver() # 조용한 드라이버 호출
-        driver.get(BASE_URL)
-        time.sleep(2)
-    
-    console.print(f"[bold blue]🚀 준비 완료! (대상: 1~{TARGET_GAMES}경기)[/]\n")
+    Returns:
+        str: 추출 및 전처리가 완료된 깔끔한 문자열
+    """
+    #if not text: return None
 
-    # 2. 헤더 출력 (표 처럼 보이게)
-    # ID(4칸) | 날짜(20칸) | 홈팀(6칸) vs 원정팀(6칸) | 관중(10칸) | 경기장
-    header = f" {'ID':^3} │ {'Date Time':^19} │ {'Matchup':^18} │ {'Audience':^8} │ {'Stadium'}"
-    console.print(f"[dim]{header}[/]")
-    console.print("[dim]─────┼─────────────────────┼────────────────────┼──────────┼──────────────────────[/]")
+    # 1. : 기준으로 자르고 뒷부분 가져오기
+    value = text.split(':')[-1]
+    
+    # 2. 특정 문자 제거 (값이 있을 때만 실행)
+    if remove_char:
+        value = value.replace(remove_char, '')
+    
+    # 3. 앞뒤백 제거 후 반환
+    return value.strip()
+
+# ---------------------------------------------------------
+year = 2025 # 연도 (2013 ~ 현재 연도)
+meetSeq = 1 # 1: K리그1, 2: K리그2
+games = range(1, 229)  # 1 ~ 228 (총 38라운드)
+startTabNum = 3  # 1: 경기결과, 2: 라인업, 3: 프리매치, 4: 경기영상, 5: 경기통계
+# HTTP 요청 시 사용자 에이전트 설정
+headers = {
+    # 사용하고 있는 브라우저에 "my user agent" 검색하여 확인
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+}
+# 데이터 저장용 리스트
+dataset = []
+
+console = Console()
+console.print(f"\n[bold magenta][{year}년 K리그 경기 데이터][/bold magenta] (총 {len(games)}경기)", style="bold")
+
+for gameId in track(games, description="[cyan]수집 중...[/cyan]"):
+    url = f"https://www.kleague.com/match.do?year={year}&meetSeq={meetSeq}&gameId={gameId}&leagueId=&startTabNum={startTabNum}"
 
     try:
-        with open(CSV_FILENAME, mode='w', encoding='utf-8-sig', newline='') as file:
-            fieldnames = ['game_id', 'datetime', 'home_team', 'away_team', 'stadium', 'audience', 'weather', 'temp', 'humidity', 'broadcast']
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            # Progress Bar 디자인 개선
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Game {task.fields[game_id]}", justify="right"),
-                BarColumn(bar_width=30, style="dim white", complete_style="green"),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeRemainingColumn(),
-                console=console,
-                transient=False # 완료 후에도 바 유지
-            ) as progress:
-                
-                task_id = progress.add_task("Processing", total=TARGET_GAMES, game_id="Wait")
+        response = requests.get(url, headers=headers)
+        response.raise_for_status() # 상태 코드 검사 (200번대가 아니면 여기서 에러 발생 -> except로 점프)
 
-                for game_id in range(1, TARGET_GAMES + 1):
-                    progress.update(task_id, game_id=str(game_id))
-                    
-                    try:
-                        data = extract_game_data(driver, game_id)
-                        writer.writerow(data)
-                        
-                        # [핵심] 줄 맞춤 포맷팅 (f-string의 정렬 기능 활용)
-                        # :^6 (가운데 정렬 6칸), :>8 (오른쪽 정렬 8칸) 등 사용
-                        if data['home_team'] == "Unknown":
-                            progress.console.print(f" {game_id:03d} │ [red]데이터 없음 (Pass)[/]")
-                        else:
-                            # 예쁘게 한 줄 출력
-                            row_str = (
-                                f" [id]{game_id:03d}[/] │ "
-                                f"[date]{data['datetime']}[/] │ "
-                                f"[team]{data['home_team']:>5}[/] [vs]vs[/] [team]{data['away_team']:<5}[/] │ "
-                                f"[audience]{data['audience']:>6}명[/] │ "
-                                f"[stadium]{data['stadium']}[/]"
-                            )
-                            progress.console.print(row_str)
-                    
-                    except Exception as e:
-                        progress.console.print(f"[bold red]❌ Error [{game_id}]: {e}[/]")
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-                    progress.update(task_id, advance=1)
+        # 초기 데이터 구조
+        data = {
+            "Meet_Year": year,     # STRING
+            "LEAGUE_NAME": None,   # STRING
+            "Round": None,         # STRING
+            "Game_id": gameId,     # STRING
+            "Game_Datetime": None, # DATETIME
+            "Day": None,           # STRING
+            "HomeTeam": None,      # STRING
+            "AwayTeam": None,      # STRING
+            "Field_Name": None,    # STRING
+            "Audience_Qty": None,  # INT64
+            "Weather": None,       # STRING
+            "Temperature": None,   # FLOAT
+            "Humidity": None       # INT64
+        }
+
+        # 리그명 (K리그1, K리그2, 승강PO, 슈퍼컵)
+        tag = soup.select_one('#meetSeq option[selected]')
+        if tag:
+            data["LEAGUE_NAME"] = tag.text.strip()
+        else:
+            print("❌ 리그명 정보를 찾을 수 없습니다.")
+
+        # 라운드 (1~38)
+        tag = soup.select_one('#roundId option[selected]')
+        if tag:
+            data["Round"] = tag.text.strip()
+        else:
+            print("❌ 라운드 정보를 찾을 수 없습니다.")
+
+        # 일시 (YYYY/MM/DD (Day) HH:MM)
+        tag = soup.select_one('div.versus p')
+        if tag:
+            parts = tag.text.split()
+            data["Game_Datetime"] = f"{parts[0]} {parts[-1]}:00".replace("/", "-")
+            data["Day"] = parts[1].strip("()")
+        else:
+            print("❌ 일시 정보를 찾을 수 없습니다.")
+
+        # 홈vs어웨이 (MM/DD)
+        tag = soup.select_one('#gameId option[selected]')
+        if tag:
+            teams = tag.text.split(' ')[0].strip()
+            if 'vs' in teams:
+                    data["HomeTeam"], data["AwayTeam"] = teams.split('vs')
+        else:
+            print("❌ 팀 정보를 찾을 수 없습니다.")
+
+        # 관중수, 경기장, 날씨, 온도, 습도
+        tags = soup.select('ul.game-sub-info.sort-box li')
+        for tag in tags:
+            text = tag.text
+            if "관중수" in text:
+                data["Audience_Qty"] = extract_value(text, ',')
+            elif "경기장" in text:
+                data["Field_Name"] = extract_value(text)
+            elif "날씨" in text:
+                data["Weather"] = extract_value(text)
+            elif "온도" in text:
+                data["Temperature"] = extract_value(text, '°C')
+            elif "습도" in text:
+                data["Humidity"] = extract_value(text, '%')
+            else:
+                print("⚠️ 올바르지 않은 정보: {tag.text}")
+
+        dataset.append(data)
+
+    except requests.exceptions.HTTPError as e:
+        # 404 Not Found, 500 Server Error 등
+        print(f"⛔ HTTP 에러 발생: {e}")
+
+    except requests.exceptions.RequestException as e:
+        # 인터넷 연결 끊김 등 기타 모든 에러
+        print(f"⛔ 네트워크 에러 발생: {e}")
 
     except Exception as e:
-        console.print_exception()
-    
-    finally:
-        console.rule("[bold green]작업 완료")
-        if driver:
-            driver.quit()
+        # 파이썬 코드 에러 (변수명 오타 등)
+        print(f"⛔ 알 수 없는 에러 발생: {e}")
 
-if __name__ == "__main__":
-    main()
+if dataset:
+    # 데이터프레임 생성
+    df = pd.DataFrame(dataset)
+
+    # CSV 파일로 저장
+    csv_filename = f"kleague_match_info_{year}.csv"
+    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+    print(f"✅ 데이터가 '{csv_filename}' 파일로 저장되었습니다.")
