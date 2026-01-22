@@ -44,6 +44,8 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
         "Day": None,
         "HomeTeam": None,
         "AwayTeam": None,
+        "HomeRank": 0,
+        "AwayRank": 0,
         "Field_Name": None,
         "Audience_Qty": None,
         "Weather": None,
@@ -78,6 +80,24 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
             data["HomeTeam"], data["AwayTeam"] = teams.split('vs')
     else:
         print("❌ 팀 정보를 찾을 수 없습니다.")
+
+    # 팀 순위
+    tag = soup.select_one('#tab03 ul.compare > li')
+
+    if tag:
+        # 2. 그 안에서 'span.font-red' (순위 텍스트)를 모두 찾습니다.
+        # HTML 순서상 [0]번이 홈팀(위쪽 div), [1]번이 원정팀(아래쪽 div)입니다.
+        tags = tag.select('span.font-red')
+        # 순위 정보가 2개 이상 발견되었을 때만 처리
+        if len(tags) >= 2:
+            # --- 홈팀 (첫 번째) ---
+            home_rank = tags[0].text.replace("위", "").strip()
+            if home_rank.isdigit():
+                data["HomeRank"] = int(home_rank)
+            # --- 원정팀 (두 번째) ---
+            away_rank = tags[1].text.replace("위", "").strip()
+            if away_rank.isdigit():
+                data["AwayRank"] = int(away_rank)
 
     # 관중수, 경기장, 날씨, 온도, 습도
     tags = soup.select('ul.game-sub-info.sort-box li')
@@ -149,4 +169,6 @@ def collect_kleague_match_data(year: int | list[int], league: str = "K리그1") 
             except Exception as e:
                 print(f"⛔ 알 수 없는 에러 발생 (year={year}, gameId={game_id}): {e}")
 
-    return year_label, dataset
+    file_name = f"kleague_match_{year_label}"
+
+    return dataset, file_name
