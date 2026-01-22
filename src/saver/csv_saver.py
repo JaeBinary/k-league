@@ -5,7 +5,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, "..", "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def save_to_csv(year_label: str, dataset: list[dict], data_type: str = "match") -> str | None:
+def save_to_csv(dataset: list[dict], file_name: str) -> str | None:
     """
     데이터셋을 CSV 파일로 저장합니다.
 
@@ -23,10 +23,7 @@ def save_to_csv(year_label: str, dataset: list[dict], data_type: str = "match") 
 
     df = pd.DataFrame(dataset)
 
-    if data_type == "preview":
-        csv_filename = os.path.join(DATA_DIR, f"kleague_preview_{year_label}.csv")
-    else:
-        csv_filename = os.path.join(DATA_DIR, f"kleague_match__{year_label}.csv")
+    csv_filename = os.path.join(DATA_DIR, f"{file_name}.csv")
 
     df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
     print(f"📂 저장 경로: {csv_filename}")
