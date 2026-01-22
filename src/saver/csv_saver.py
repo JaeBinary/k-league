@@ -6,7 +6,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, "..", "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def save_to_csv(dataset):
+def save_to_csv(dataset: list[dict]) -> str | None:
     """
     데이터셋을 CSV 파일로 저장합니다.
 
@@ -17,7 +17,7 @@ def save_to_csv(dataset):
         str: 저장된 파일명, 실패 시 None
     """
     if not dataset:
-        print("⚠️ 저장할 데이터가 없습니다.")
+        print("⚠️  저장할 데이터가 없습니다.")
         return None
 
     today = datetime.now().strftime("%Y%m%d")

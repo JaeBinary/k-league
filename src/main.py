@@ -1,7 +1,7 @@
-from scaper.kleague_scarper import collect_kleague_data
+from scraper.kleague_scraper import collect_kleague_data
 from saver.csv_saver import save_to_csv
 
-def main():
+def main() -> None:
     """
     메인 실행 함수
     """

@@ -19,7 +19,7 @@ LEAGUE_CODE = {
 }
 
 
-def extract_value(text, remove_char=""):
+def extract_value(text: str, remove_char: str = "") -> str:
     """
     문자열에서 콜론(:) 뒤의 값을 추출하고, 특정 문자를 제거한 후 공백을 정리합니다.
 
@@ -37,7 +37,7 @@ def extract_value(text, remove_char=""):
     return value.strip()
 
 
-def fetch_page(url, headers=None):
+def fetch_page(url: str, headers: dict | None = None) -> BeautifulSoup | None:
     """
     URL에서 HTML 페이지를 가져옵니다.
 
@@ -63,7 +63,7 @@ def fetch_page(url, headers=None):
     return None
 
 
-def parse_game_info(soup, year, game_id):
+def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
     """
     BeautifulSoup 객체에서 경기 정보를 파싱합니다.
 
@@ -143,15 +143,13 @@ def parse_game_info(soup, year, game_id):
     return data
 
 
-def collect_kleague_data(year, league="K리그1", games=None, start_tab_num=3):
+def collect_kleague_data(year: int, league: str = "K리그1") -> list[dict]:
     """
     K리그 경기 데이터를 수집합니다.
 
     Args:
         year (int): 시즌 연도 (2013 ~ 현재)
         league (str): 리그명 ("K리그1", "K리그2", "승강PO", "슈퍼컵")
-        games (range/list): 수집할 경기 ID 범위 (기본값: 1~228)
-        start_tab_num (int): 탭 번호 (3: 프리매치)
 
     Returns:
         list: 수집된 경기 정보 리스트
@@ -161,8 +159,8 @@ def collect_kleague_data(year, league="K리그1", games=None, start_tab_num=3):
         print(f"⛔ 잘못된 리그명: {league} (가능한 값: {list(LEAGUE_CODE.keys())})")
         return []
 
-    if games is None:
-        games = range(1, 229)
+    games = range(1, 229)
+    start_tab_num = 3
 
     console = Console()
     console.print(f"\n[bold magenta][{year}년 {league} 경기 데이터][/bold magenta] (총 {len(games)}경기)", style="bold")
