@@ -103,7 +103,7 @@ def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1"
     # 예시: 1페이지만 수집 (필요 시 반복문으로 확장 가능)
     pages = [1, 2, 3]
 
-    all_news = []  # 모든 페이지의 뉴스를 저장할 리스트
+    dataset = []  # 모든 페이지의 뉴스를 저장할 리스트
     console = Console()
 
     for year_val in years:
@@ -122,16 +122,18 @@ def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1"
                 print(f"⛔ 페이지 로딩 실패 (year={year_val}, page={page}): {e}")
 
         # 총 기사 수 출력
-        console.print(f"\n[bold magenta][{year_val}년 {league} 프리뷰 뉴스 데이터][/bold magenta] (총 {len(all_rows)}개 기사)", style="bold")
+        console.print(f"\n[bold magenta][{year_val}년 {league} 프리뷰 데이터][/bold magenta] (총 {len(all_rows)}개 라운드)", style="bold")
 
         # 모든 rows를 하나의 진행 표시줄로 처리
         for row, year_v, league_v in track(all_rows, description=f"[cyan]수집 현황: [/cyan]"):
             try:
                 data = parse_game_info(row, year_v, league_v)
                 if data:
-                    all_news.append(data)
+                    dataset.append(data)
             except Exception as e:
                 print(f"⚠️ 파싱 중 에러 발생: {e}")
                 continue
 
-    return year_label, all_news
+    file_name = f"kleague_preview_{year_label}"
+
+    return dataset, file_name
