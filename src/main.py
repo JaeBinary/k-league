@@ -6,8 +6,8 @@ def main() -> None:
     메인 실행 함수
     """
 
-    dataset = collect_kleague_data(2025, "K리그1")
-    save_to_csv(dataset)
+    year, dataset = collect_kleague_data(2024, "K리그1")
+    save_to_csv(year, dataset)
 
 
 if __name__ == "__main__":
