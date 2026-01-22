@@ -52,12 +52,12 @@ def _to_dataframe(data: pd.DataFrame | list[dict] | str) -> pd.DataFrame | None:
 
 
 def save_to_db(
-    data: pd.DataFrame | list[dict] | str,
-    table_name: str,
-    db_path: str = None,
-    if_exists: str = 'replace',
-    dtype_map: dict = None
-) -> str | None:
+        data: pd.DataFrame | list[dict] | str,
+        table_name: str,
+        db_path: str = None,
+        if_exists: str = 'replace',
+        dtype_map: dict = None
+    ) -> str | None:
     """
     데이터를 SQLite 데이터베이스로 저장합니다.
 
