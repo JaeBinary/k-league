@@ -144,6 +144,7 @@ def collect_kleague_data(year: int, league: str = "K리그1") -> list[dict]:
         league (str): 리그명 ("K리그1", "K리그2", "승강PO", "슈퍼컵")
 
     Returns:
+        int: 시즌 연도
         list: 수집된 경기 정보 리스트
     """
 
@@ -180,4 +181,4 @@ def collect_kleague_data(year: int, league: str = "K리그1") -> list[dict]:
         except Exception as e:
             print(f"⛔ 알 수 없는 에러 발생 (gameId={game_id}): {e}")
 
-    return dataset
+    return year, dataset
