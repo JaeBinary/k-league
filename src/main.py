@@ -7,13 +7,13 @@ def main() -> None:
     메인 실행 함수
     """
 
-
-    #year_label, dataset = collect_kleague_match_data([2023, 2025], "K리그1")
-    #save_to_csv(year_label, dataset)
+    # match 데이터 수집 및 CSV 저장
+    dataset, file_name = collect_kleague_match_data([2023, 2025], "K리그1")
+    save_to_csv(dataset, file_name)
 
     # preview 데이터 수집 및 CSV 저장
-    year_label, preview_dataset = collect_kleague_preview_data([2023, 2025], "K리그1")
-    save_to_csv(year_label, preview_dataset, data_type="preview")
+    dataset, file_name = collect_kleague_preview_data([2023, 2025], "K리그1")
+    save_to_csv(dataset, file_name)
 
 if __name__ == "__main__":
     main()
