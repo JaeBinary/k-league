@@ -6,7 +6,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, "..", "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def save_to_csv(dataset: list[dict]) -> str | None:
+def save_to_csv(year: int, dataset: list[dict]) -> str | None:
     """
     데이터셋을 CSV 파일로 저장합니다.
 
@@ -23,7 +23,7 @@ def save_to_csv(dataset: list[dict]) -> str | None:
     today = datetime.now().strftime("%Y%m%d")
 
     df = pd.DataFrame(dataset)
-    csv_filename = os.path.join(DATA_DIR, f"kleague_match_info_{today}.csv")
+    csv_filename = os.path.join(DATA_DIR, f"kleague_match_info_{year}.csv")
     df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
     print(f"📂 저장 경로: {csv_filename}")
 
