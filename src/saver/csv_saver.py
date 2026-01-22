@@ -23,9 +23,9 @@ def save_to_csv(dataset: list[dict], file_name: str) -> str | None:
 
     df = pd.DataFrame(dataset)
 
-    csv_filename = os.path.join(DATA_DIR, f"{file_name}.csv")
+    csv_file_path = os.path.join(DATA_DIR, f"{file_name}.csv")
 
-    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-    print(f"📂 저장 경로: {csv_filename}")
+    df.to_csv(csv_file_path, index=False, encoding='utf-8-sig')
+    print(f"📂 저장 경로: {csv_file_path}")
 
-    return csv_filename
+    return csv_file_path
