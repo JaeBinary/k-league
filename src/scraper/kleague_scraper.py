@@ -10,14 +10,6 @@ DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 }
 
-# 리그 코드 매핑
-LEAGUE_CODE = {
-    "K리그1": 1,
-    "K리그2": 2,
-    "승강PO": 3,
-    "슈퍼컵": 4
-}
-
 
 def extract_value(text: str, remove_char: str = "") -> str:
     """
@@ -154,6 +146,15 @@ def collect_kleague_data(year: int, league: str = "K리그1") -> list[dict]:
     Returns:
         list: 수집된 경기 정보 리스트
     """
+
+    # 리그 코드 매핑
+    LEAGUE_CODE = {
+        "K리그1": 1,
+        "K리그2": 2,
+        "승강PO": 3,
+        "슈퍼컵": 4
+    }
+
     meet_seq = LEAGUE_CODE.get(league)
     if meet_seq is None:
         print(f"⛔ 잘못된 리그명: {league} (가능한 값: {list(LEAGUE_CODE.keys())})")
