@@ -1,14 +1,9 @@
-import requests
-import pandas as pd
 from bs4 import BeautifulSoup
 
 from rich.console import Console
 from rich.progress import track
 
-# 기본 HTTP 헤더
-DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-}
+from .scraper import fetch_page
 
 
 def extract_value(text: str, remove_char: str = "") -> str:
@@ -24,35 +19,8 @@ def extract_value(text: str, remove_char: str = "") -> str:
         str: 추출 및 전처리가 완료된 깔끔한 문자열
     """
     value = text.split(':')[-1]
-    if remove_char:
-        value = value.replace(remove_char, '')
+    if remove_char: value = value.replace(remove_char, '')
     return value.strip()
-
-
-def fetch_page(url: str, headers: dict | None = None) -> BeautifulSoup | None:
-    """
-    URL에서 HTML 페이지를 가져옵니다.
-
-    Args:
-        url (str): 요청할 URL
-        headers (dict, optional): HTTP 헤더
-
-    Returns:
-        BeautifulSoup: 파싱된 HTML 객체, 실패 시 None
-    """
-    headers = headers or DEFAULT_HEADERS
-
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return BeautifulSoup(response.text, 'html.parser')
-
-    except requests.exceptions.HTTPError as e:
-        print(f"⛔ HTTP 에러 발생: {e}")
-    except requests.exceptions.RequestException as e:
-        print(f"⛔ 네트워크 에러 발생: {e}")
-
-    return None
 
 
 def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
@@ -85,17 +53,13 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
 
     # 리그명
     tag = soup.select_one('#meetSeq option[selected]')
-    if tag:
-        data["LEAGUE_NAME"] = tag.text.strip()
-    else:
-        print("❌ 리그명 정보를 찾을 수 없습니다.")
+    if tag: data["LEAGUE_NAME"] = tag.text.strip()
+    else: print("❌ 리그명 정보를 찾을 수 없습니다.")
 
     # 라운드
     tag = soup.select_one('#roundId option[selected]')
-    if tag:
-        data["Round"] = tag.text.strip()
-    else:
-        print("❌ 라운드 정보를 찾을 수 없습니다.")
+    if tag: data["Round"] = tag.text.strip()
+    else: print("❌ 라운드 정보를 찾을 수 없습니다.")
 
     # 일시
     tag = soup.select_one('div.versus p')
@@ -119,18 +83,12 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
     tags = soup.select('ul.game-sub-info.sort-box li')
     for tag in tags:
         text = tag.text
-        if "관중수" in text:
-            data["Audience_Qty"] = extract_value(text, ',')
-        elif "경기장" in text:
-            data["Field_Name"] = extract_value(text)
-        elif "날씨" in text:
-            data["Weather"] = extract_value(text)
-        elif "온도" in text:
-            data["Temperature"] = extract_value(text, '°C')
-        elif "습도" in text:
-            data["Humidity"] = extract_value(text, '%')
-        else:
-            print(f"⚠️ 올바르지 않은 정보: {tag.text}")
+        if "관중수" in text: data["Audience_Qty"] = extract_value(text, ',')
+        elif "경기장" in text: data["Field_Name"] = extract_value(text)
+        elif "날씨" in text: data["Weather"] = extract_value(text)
+        elif "온도" in text: data["Temperature"] = extract_value(text, '°C')
+        elif "습도" in text: data["Humidity"] = extract_value(text, '%')
+        else: print(f"⚠️ 올바르지 않은 정보: {tag.text}")
 
     return data
 
