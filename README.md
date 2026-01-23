@@ -1,13 +1,13 @@
-<table width="100%">
-  <tr>
-    <td align="center" bgcolor="#F0F8FF">
-      <br>
-      <h1>⚽ 승강제 확산이 리그 관중 증대에 미치는 영향 분석</h1>
-      <h3>K3리그 승강제 도입의 타당성 및 '흥미로운 경기' 지표 발굴을 중심으로</h3>
-      <br>
+<table width="100%" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td align="center" bgcolor="#E3F2FD" style="padding: 20px; border: none;">
+      <h1 style="margin: 0; color: #0D47A1;">⚽ 승강제 확산이 리그 관중 증대에 미치는 영향 분석</h1>
+      <p style="margin: 10px 0 0 0; color: #546E7A;"><b>K3리그 승강제 도입의 타당성 및 '흥미로운 경기' 지표 발굴을 중심으로</b></p>
     </td>
   </tr>
 </table>
+
+<br>
 
 ### Team
 ---
@@ -19,10 +19,10 @@
 
 <br>
 
-<table>
-  <tr>
-    <td width="100%" bgcolor="#EEEEEE">
-      <h3 style="margin:0;">1. Background</h3>
+<table width="100%" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td bgcolor="#F5F5F5" style="padding: 10px; border-left: 5px solid #0D47A1;">
+      <h2 style="margin: 0;">1. Background</h2>
     </td>
   </tr>
 </table>
@@ -42,10 +42,10 @@
 
 <br>
 
-<table>
-  <tr>
-    <td width="100%" bgcolor="#EEEEEE">
-      <h3 style="margin:0;">2. Key Hypotheses</h3>
+<table width="100%" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td bgcolor="#F5F5F5" style="padding: 10px; border-left: 5px solid #0D47A1;">
+      <h2 style="margin: 0;">2. Key Hypotheses</h2>
     </td>
   </tr>
 </table>
@@ -67,51 +67,6 @@
 
 <br>
 
-<table>
-  <tr>
-    <td width="100%" bgcolor="#EEEEEE">
-      <h3 style="margin:0;">3. Methodology & Data Strategy</h3>
-    </td>
-  </tr>
-</table>
-
-#### 1. Analytical Scope (분석 범위)
-| 구분 | 대상 (Target) | 분석 목적 |
-| :--- | :--- | :--- |
-| **Macro** | **J-League (J1~J3)** | 승강제 정착 모델의 구조적 특징 및 리그별 관중 격차 분석 |
-| **Micro** | **EPL / EFL** | 드라마틱한 승격/강등 사례(Case Study)를 통한 '변화의 파급력' 측정 |
-| **Metric** | **Tracking Data** | 선수 활동량(스프린트, 활동 거리) 데이터와 관중 수의 상관관계 도출 |
-
-#### 2. Data Engineering (ERD 설계안)
-데이터의 일관성과 분석 용이성을 위해 `Snowflake Schema` 형태로 데이터를 구축한다.
-
-* **`League_Meta`**: 리그 기본 정보 (국가, 시즌, 티어, 승강제 여부)
-* **`Team_Stats`**: 시즌별 팀 성적 (순위, 승점, 승격/강등 여부, 평균 관중)
-* **`Match_Log`**: 경기별 상세 기록 (매치업, 경기장, 날씨, **총 관중 수**)
-* **`Physical_Metrics`**: **[Core Data]** 경기별 활동량 데이터 (양 팀 총 이동 거리, 스프린트 횟수, 고강도 러닝 비율)
-
-<br>
-
-<table>
-  <tr>
-    <td width="100%" bgcolor="#EEEEEE">
-      <h3 style="margin:0;">4. References & Data Sources</h3>
-    </td>
-  </tr>
-</table>
-
-#### 1. Target Domain Sources (Data Crawling)
-* **K League Official Website:** `https://www.kleague.com/index.do`
-    * *Purpose:* K리그 역대 관중 수 및 경기 일정 데이터 확보 (Control Group)
-* **J League Official Website:** `https://www.jleague.jp`
-    * *Purpose:* J1~J3 리그별 구조 파악 및 공식 경기 기록 수집 (Experimental Group)
-
-#### 2. Tech Stack Documentation
-* **Beautiful Soup 4:** `https://www.crummy.com/software/BeautifulSoup/bs4/doc`
-    * *Usage:* 정적 웹 페이지(Static Page)의 HTML 파싱 및 데이터 추출
-* **Selenium:** `https://www.selenium.dev/documentation`
-    * *Usage:* 동적 웹 페이지(Dynamic Page) 제어 및 자바스크립트 렌더링 데이터 수집
-
-#### 3. Internal Resources
-* **Lecture Material:** Day7_0 - 정적 스크래이핑 (BeautifulSoup)
-    * *Application:* 크롤러 설계 및 파싱 로직 구현 참조
+<table width="100%" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td bgcolor="#F5F5F5
