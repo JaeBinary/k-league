@@ -1,5 +1,12 @@
 # k-league
 
+### 팀원
+| **김재빈** | **김대훈** |
+| :---: | :---: |
+| <a href="https://github.com/JaeBinary"><img src="https://github.com/JaeBinary.png" width="100"></a> | <a href="https://github.com/Virum123"><img src="https://github.com/Virum123.png" width="100"></a> |
+
+
+
 # K리그
 https://www.kleague.com/index.do
 
