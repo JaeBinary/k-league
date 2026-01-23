@@ -7,7 +7,7 @@
 | :---: | :---: | :---: |
 | **프로필** | <a href="https://github.com/JaeBinary"><img src="https://github.com/JaeBinary.png" width="100"></a> | <a href="https://github.com/Virum123"><img src="https://github.com/Virum123.png" width="100"></a> |
 | **소속** | AI SeSAC | AI SeSAC |
-| **역할** | **Data Engineering**<br>(J-League ETL & H/W Metric) | **Data Analysis**<br>(EPL/EFL Insight & Visualization) |
+| **역할** | **Data Engineering**<br>(K/J-League ETL & H/W Metric) | **Data Analysis**<br>(EPL/EFL Insight & Visualization) |
 
 ### Background
 ---
@@ -73,7 +73,7 @@
 ### Expected Outcomes
 ---
 1.  **정책적 제언:** 데이터에 근거한 'K3 승강제 도입의 기대 효과'를 수치(관중 증가 예상분)로 제시.
-2.  **마케팅 인사이트:** "팬들은 많이 뛰는 팀을 보러 온다"는 가설 입증을 통해, 구단들에 **'공격적/활동적 경기 운영'**의 동기 부여 제공.
+2.  **마케팅 인사이트:** "팬들은 많이 뛰는 팀을 보러 온다"는 가설 입증을 통해, 구단들에 '공격적/활동적 경기 운영'의 동기 부여 제공.
 3.  **확장성:** 향후 K리그 공식 부가 데이터(Tracking Data) 도입 시 활용 가능한 분석 프레임워크 마련.
 
 ### References & Data Sources
