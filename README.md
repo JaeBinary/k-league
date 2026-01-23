@@ -1,9 +1,12 @@
 # k-league
 
 ### Team
-| **김재빈** | **김대훈** |
-| :---: | :---: |
-| <a href="https://github.com/JaeBinary"><img src="https://github.com/JaeBinary.png" width="100"></a> | <a href="https://github.com/Virum123"><img src="https://github.com/Virum123.png" width="100"></a> |
+---
+| **성명** | **김재빈** | **김대훈** |
+| :---: | :---: | :---: |
+| **프로필** | <a href="https://github.com/JaeBinary"><img src="https://github.com/JaeBinary.png" width="100"></a> | <a href="https://github.com/Virum123"><img src="https://github.com/Virum123.png" width="100"></a> |
+| **소속** | AI SeSAC | AI SeSAC |
+| **역할** | Data Engineer | Data Analysis |
 
 ###
 
