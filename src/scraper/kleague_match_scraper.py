@@ -113,7 +113,7 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> dict:
     return data
 
 
-def collect_kleague_match_data(year: int | list[int], league: str = "K리그1") -> tuple[str, list[dict]]:
+def collect_kleague_match_data(year: int | list[int], league: str | list[str] = "K리그1") -> tuple[str, list[dict]]:
     """
     K리그 경기 데이터를 수집합니다.
 
@@ -121,7 +121,9 @@ def collect_kleague_match_data(year: int | list[int], league: str = "K리그1") 
         year (int | list[int]): 시즌 연도 (2013 ~ 현재) 또는 년도 범위 리스트
                                 예: 2025 → 2025년만 수집
                                     [2023, 2025] → 2023~2025년 모두 수집
-        league (str): 리그명 ("K리그1", "K리그2", "승강PO", "슈퍼컵")
+        league (str | list[str]): 리그명 ("K리그1", "K리그2", "승강PO", "슈퍼컵") 또는 리그명 리스트
+                                  예: "K리그1" → K리그1만 수집
+                                      ["K리그1", "K리그2"] → 두 리그 모두 수집
 
     Returns:
         str: 년도 레이블 (예: "2025" 또는 "2023-2025")
@@ -136,10 +138,13 @@ def collect_kleague_match_data(year: int | list[int], league: str = "K리그1") 
         "슈퍼컵": 4
     }
 
-    meet_seq = LEAGUE_CODE.get(league)
-    if meet_seq is None:
-        print(f"⛔ 잘못된 리그명: {league} (가능한 값: {list(LEAGUE_CODE.keys())})")
-        return "", []
+    # 리그 처리: str → [str], list → 그대로 사용
+    if isinstance(league, str):
+        leagues = [league]
+        league_label = league.replace("K리그", "kleague")
+    else:
+        leagues = league
+        league_label = "kleague"
 
     # 년도 처리: int → [int], list → 범위 확장
     if isinstance(year, int):
@@ -149,26 +154,48 @@ def collect_kleague_match_data(year: int | list[int], league: str = "K리그1") 
         years = list(range(min(year), max(year) + 1))
         year_label = f"{min(year)}-{max(year)}"
 
-    games = range(1, 229)
+    # 연도 및 리그별 경기 수 매핑
+    GAMES_COUNT = {
+        ("K리그1", 2023): 228,
+        ("K리그1", 2024): 228,
+        ("K리그1", 2025): 228,
+        ("K리그2", 2023): 236,
+        ("K리그2", 2024): 236,
+        ("K리그2", 2025): 275,
+        ("승강PO", 2023): 4,
+        ("승강PO", 2024): 4,
+        ("승강PO", 2025): 4
+    }
+
     start_tab_num = 3
     console = Console()
 
     dataset = []
 
-    for year in years:
-        console.print(f"\n[bold magenta][{year}년 {league} 경기 데이터][/bold magenta] (총 {len(games)}경기)", style="bold")
+    for league_name in leagues:
+        meet_seq = LEAGUE_CODE.get(league_name)
+        if meet_seq is None:
+            print(f"⛔ 잘못된 리그명: {league_name} (가능한 값: {list(LEAGUE_CODE.keys())})")
+            continue
 
-        for game_id in track(games, description=f"[cyan]수집 현황: [/cyan]"):
-            url = f"https://www.kleague.com/match.do?year={year}&meetSeq={meet_seq}&gameId={game_id}&leagueId=&startTabNum={start_tab_num}"
-            try:
-                soup = fetch_page(url)
-                if soup:
-                    data = parse_game_info(soup, year, game_id)
-                    dataset.append(data)
+        for year_val in years:
+            # 해당 리그와 연도에 맞는 경기 수 가져오기 (기본값: 228)
+            total_games = GAMES_COUNT.get((league_name, year_val), 228)
+            games = range(1, total_games + 1)
 
-            except Exception as e:
-                print(f"⛔ 알 수 없는 에러 발생 (year={year}, gameId={game_id}): {e}")
+            console.print(f"\n[bold magenta][{year_val}년 {league_name} 경기 데이터][/bold magenta] (총 {len(games)}경기)", style="bold")
 
-    file_name = f"kleague_match_{year_label}"
+            for game_id in track(games, description=f"[cyan]수집 현황: [/cyan]"):
+                url = f"https://www.kleague.com/match.do?year={year_val}&meetSeq={meet_seq}&gameId={game_id}&leagueId=&startTabNum={start_tab_num}"
+                try:
+                    soup = fetch_page(url)
+                    if soup:
+                        data = parse_game_info(soup, year_val, game_id)
+                        dataset.append(data)
+
+                except Exception as e:
+                    print(f"⛔ 알 수 없는 에러 발생 (year={year_val}, gameId={game_id}): {e}")
+
+    file_name = f"{league_label}_match_{year_label}"
 
     return dataset, file_name
