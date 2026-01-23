@@ -70,7 +70,7 @@ def parse_game_info(row, year: int, league: str) -> dict:
     return data
 
 
-def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1") -> tuple[str, list]:
+def collect_kleague_preview_data(year: int | list[int], league: str | list[str] = "K리그1") -> tuple[str, list]:
     """
     K리그 프리뷰 뉴스 데이터를 수집합니다.
 
@@ -78,7 +78,9 @@ def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1"
         year (int | list[int]): 시즌 연도 또는 년도 범위 리스트
                                 예: 2025 → 2025년만 수집
                                     [2023, 2025] → 2023~2025년 모두 수집
-        league (str): 리그명 ("K리그1", "K리그2") (기본값: "K리그1")
+        league (str | list[str]): 리그명 ("K리그1", "K리그2") 또는 리그명 리스트 (기본값: "K리그1")
+                                  예: "K리그1" → K리그1만 수집
+                                      ["K리그1", "K리그2"] → 두 리그 모두 수집
 
     Returns:
         str: 년도 레이블 (예: "2025" 또는 "2023-2025")
@@ -91,6 +93,14 @@ def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1"
             return "하나원큐%20K리그1" if league == "K리그1" else "하나원큐%20K리그2"
         else:
             return "하나은행%20K리그1" if league == "K리그1" else "하나은행%20K리그2"
+
+    # 리그 처리: str → [str], list → 그대로 사용
+    if isinstance(league, str):
+        leagues = [league]
+        league_label = league.replace("K리그", "kleague")
+    else:
+        leagues = league
+        league_label = "kleague"
 
     # 년도 처리: int → [int], list → 범위 확장
     if isinstance(year, int):
@@ -106,34 +116,35 @@ def collect_kleague_preview_data(year: int | list[int], league: str = "K리그1"
     dataset = []  # 모든 페이지의 뉴스를 저장할 리스트
     console = Console()
 
-    for year_val in years:
-        keyword = get_league_keyword(year_val, league)
-        search_keyword = f"{keyword}%20{year_val}"
+    for league_name in leagues:
+        for year_val in years:
+            keyword = get_league_keyword(year_val, league_name)
+            search_keyword = f"{keyword}%20{year_val}"
 
-        # 먼저 모든 페이지에서 rows를 수집
-        all_rows = []
-        for page in pages:
-            url = f"https://www.kleague.com/news_list.do?search={search_keyword}&category=league&orderBy=seq&page={page}&viewOption=list"
-            try:
-                soup = fetch_page(url)
-                rows = soup.select('div.table-wrap.board-list.list table tbody tr')
-                all_rows.extend([(row, year_val, league) for row in rows])
-            except Exception as e:
-                print(f"⛔ 페이지 로딩 실패 (year={year_val}, page={page}): {e}")
+            # 먼저 모든 페이지에서 rows를 수집
+            all_rows = []
+            for page in pages:
+                url = f"https://www.kleague.com/news_list.do?search={search_keyword}&category=league&orderBy=seq&page={page}&viewOption=list"
+                try:
+                    soup = fetch_page(url)
+                    rows = soup.select('div.table-wrap.board-list.list table tbody tr')
+                    all_rows.extend([(row, year_val, league_name) for row in rows])
+                except Exception as e:
+                    print(f"⛔ 페이지 로딩 실패 (year={year_val}, page={page}): {e}")
 
-        # 총 기사 수 출력
-        console.print(f"\n[bold magenta][{year_val}년 {league} 프리뷰 데이터][/bold magenta] (총 {len(all_rows)}개 라운드)", style="bold")
+            # 총 기사 수 출력
+            console.print(f"\n[bold magenta][{year_val}년 {league_name} 프리뷰 데이터][/bold magenta] (총 {len(all_rows)}개 라운드)", style="bold")
 
-        # 모든 rows를 하나의 진행 표시줄로 처리
-        for row, year_v, league_v in track(all_rows, description=f"[cyan]수집 현황: [/cyan]"):
-            try:
-                data = parse_game_info(row, year_v, league_v)
-                if data:
-                    dataset.append(data)
-            except Exception as e:
-                print(f"⚠️ 파싱 중 에러 발생: {e}")
-                continue
+            # 모든 rows를 하나의 진행 표시줄로 처리
+            for row, year_v, league_v in track(all_rows, description=f"[cyan]수집 현황: [/cyan]"):
+                try:
+                    data = parse_game_info(row, year_v, league_v)
+                    if data:
+                        dataset.append(data)
+                except Exception as e:
+                    print(f"⚠️ 파싱 중 에러 발생: {e}")
+                    continue
 
-    file_name = f"kleague_preview_{year_label}"
+    file_name = f"{league_label}_preview_{year_label}"
 
     return dataset, file_name
