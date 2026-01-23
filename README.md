@@ -8,13 +8,11 @@
 | **소속** | AI SeSAC | AI SeSAC |
 | **역할** | Data Engineer | Data Analysis |
 
-###
-
-# K리그
+### K리그 공식 홈페이지 
 https://www.kleague.com/index.do
 
-# K리그 데이터 포털
-https://data.kleague.com
+### J리그 공식 홈페이지
+https://www.jleague.jp
 
 # Beautiful Soup Documentation
 https://www.crummy.com/software/BeautifulSoup/bs4/doc
