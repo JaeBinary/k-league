@@ -42,11 +42,14 @@ def fetch_page(url: str, headers: dict | None = None) -> BeautifulSoup | None:
     return None
 
 
-def setup_chrome_driver() -> webdriver.Chrome:
+def setup_chrome_driver(optimized: bool = False) -> webdriver.Chrome:
     """
     Chrome WebDriver를 설정하고 초기화합니다.
 
     헤드리스 모드로 실행되며, 샌드박스 비활성화 및 User-Agent 설정을 포함합니다.
+
+    Args:
+        optimized: True일 경우 성능 최적화 옵션 적용 (이미지, CSS 차단 등)
 
     Returns:
         webdriver.Chrome: 설정이 완료된 Chrome WebDriver 인스턴스
@@ -56,6 +59,28 @@ def setup_chrome_driver() -> webdriver.Chrome:
     chrome_options.add_argument("--no-sandbox")  # 리눅스 환경 호환성
     chrome_options.add_argument("--disable-dev-shm-usage")  # 메모리 최적화
     chrome_options.add_argument(f"user-agent={USER_AGENT}")
+
+    # 성능 최적화 옵션
+    if optimized:
+        # GPU 비활성화 (헤드리스에서 불필요)
+        chrome_options.add_argument("--disable-gpu")
+
+        # 확장 프로그램 비활성화
+        chrome_options.add_argument("--disable-extensions")
+
+        # 자동화 제어 플래그 비활성화 (약간의 성능 향상)
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+
+        # 이미지만 차단 (CSS와 JavaScript는 유지)
+        prefs = {
+            "profile.managed_default_content_settings.images": 2,  # 이미지 차단
+            "profile.default_content_setting_values.notifications": 2,  # 알림 차단
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+
+        # 페이지 로드 전략: eager (DOM 준비되면 바로 진행, 이미지 대기 안 함)
+        chrome_options.page_load_strategy = 'eager'
 
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
