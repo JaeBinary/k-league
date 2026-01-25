@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from typing import Dict, Optional, Any, Callable, List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -30,7 +31,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from rich.console import Console
-from rich.progress import track
+from rich.progress import track, Progress
 
 from .scraper import setup_chrome_driver
 
@@ -64,7 +65,32 @@ WEATHER_TRANSLATION: Dict[str, str] = {
     "晴": "맑음",    # 맑음
     "曇": "흐림",    # 흐림
     "雨": "비",      # 비
-    "雪": "눈"       # 눈
+    "雪": "눈",      # 눈
+    "晴一時雨": "맑다가 일시 비",
+    "晴一時曇": "맑다가 일시 흐림",
+    "晴時々曇": "맑음 때때로 흐림",
+    "晴のち雨のち曇": "맑음 후 비 후 흐림",
+    "晴のち雨": "맑음 후 비",
+    "晴のち曇時々雨": "맑음 후 흐림 때때로 비",
+    "晴のち曇": "맑음 후 흐림",
+    "雨一時曇": "비 일시 흐림",
+    "雨時々曇": "비 때때로 흐림",
+    "雨のち曇時々雨": "비 후 흐림 때때로 비",
+    "雨のち曇のち雨": "비 후 흐림 후 비",
+    "雨のち曇": "비 후 흐림",
+    "屋内": "실내",
+    "霧": "안개",
+    "曇一時晴": "흐림 일시 맑음",
+    "曇一時雨のち晴": "흐림 일시 비 후 맑음",
+    "曇一時雨": "흐림 일시 비",
+    "曇一時雷雨": "흐림 일시 뇌우",
+    "曇時々晴時々雪": "흐림 때때로 맑음 때때로 눈",
+    "曇時々晴": "흐림 때때로 맑음",
+    "曇時々雨": "흐림 때때로 비",
+    "曇のち晴": "흐림 후 맑음",
+    "曇のち雨のち曇": "흐림 후 비 후 흐림",
+    "曇のち雨": "흐림 후 비",
+    "曇のち雷雨のち雨": "흐림 후 뇌우 후 비"
 }
 
 # 일본어 요일을 한국어로 변환
@@ -581,9 +607,15 @@ def extract_tracking_data(driver: webdriver.Chrome) -> Dict[str, Optional[str]]:
 # 메인 수집 함수 (Main Scraping Functions)
 # ============================================================================
 
-def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[str, Any]]:
+def _scrape_single_match_with_driver(
+    driver: webdriver.Chrome,
+    url: str,
+    year: int,
+    league_name: str
+) -> Optional[Dict[str, Any]]:
     """
-    단일 경기 페이지에서 모든 경기 데이터를 수집합니다.
+    기존 WebDriver를 사용하여 단일 경기 페이지에서 모든 경기 데이터를 수집합니다.
+    (성능 최적화: 드라이버 재사용)
 
     데이터 수집 파이프라인:
         1. 페이지 로드 및 대기
@@ -593,43 +625,16 @@ def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[
         5. 트래킹 데이터 추출 (주행거리, 스프린트)
         6. 모든 데이터를 하나의 딕셔너리로 통합
 
-    출력 데이터 구조 예시:
-        {
-            "Meet_Year": 2025,
-            "LEAGUE_NAME": "J리그1",
-            "Round": 10,
-            "Game_Datetime": "2025-03-15 14:00:00",
-            "Day": "토",
-            "HomeTeam": "浦和レッズ",
-            "AwayTeam": "鹿島アントラーズ",
-            "HomeDistance": "115.2",
-            "AwayDistance": "112.8",
-            "HomeSprint": "45",
-            "AwaySprint": "38",
-            "Audience_Qty": 45123,
-            "Weather": "맑음",
-            "Temperature": "25",
-            "Humidity": "60"
-        }
-
     Args:
+        driver: 재사용할 Selenium WebDriver 인스턴스
         url: J리그 경기 상세 페이지 URL
-            예: https://www.jleague.jp/match/j1/2025/031500/live/
         year: 시즌 연도
         league_name: 리그 이름
 
     Returns:
         Optional[Dict[str, Any]]: 통합된 경기 데이터 딕셔너리
                                  페이지 로드 실패 또는 필수 데이터 없을 시 None
-
-    Note:
-        - WebDriver는 함수 종료 시 자동으로 종료됨 (finally 블록)
-        - 부분적인 데이터 누락은 허용 (None 값으로 표시)
-        - 페이지 로드 실패나 필수 테이블 부재 시에만 None 반환
     """
-    # Chrome WebDriver 초기화
-    driver = setup_chrome_driver()
-
     try:
         # 경기 페이지 로드
         driver.get(url)
@@ -683,6 +688,63 @@ def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[
 
         return final_data
 
+    except Exception as e:
+        print(f"❌ 경기 데이터 수집 중 예외 발생: {e}")
+        return None
+
+
+def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[str, Any]]:
+    """
+    단일 경기 페이지에서 모든 경기 데이터를 수집합니다.
+    (하위 호환성 유지용 래퍼 함수)
+
+    데이터 수집 파이프라인:
+        1. 페이지 로드 및 대기
+        2. 스타디움 테이블에서 관중/날씨 정보 추출
+        3. 데이터 정제 (타입 변환, 파싱)
+        4. 메타데이터 추출 (라운드, 날짜, 팀명)
+        5. 트래킹 데이터 추출 (주행거리, 스프린트)
+        6. 모든 데이터를 하나의 딕셔너리로 통합
+
+    출력 데이터 구조 예시:
+        {
+            "Meet_Year": 2025,
+            "LEAGUE_NAME": "J리그1",
+            "Round": 10,
+            "Game_Datetime": "2025-03-15 14:00:00",
+            "Day": "토",
+            "HomeTeam": "浦和レッズ",
+            "AwayTeam": "鹿島アントラーズ",
+            "HomeDistance": "115.2",
+            "AwayDistance": "112.8",
+            "HomeSprint": "45",
+            "AwaySprint": "38",
+            "Audience_Qty": 45123,
+            "Weather": "맑음",
+            "Temperature": "25",
+            "Humidity": "60"
+        }
+
+    Args:
+        url: J리그 경기 상세 페이지 URL
+            예: https://www.jleague.jp/match/j1/2025/031500/live/
+        year: 시즌 연도
+        league_name: 리그 이름
+
+    Returns:
+        Optional[Dict[str, Any]]: 통합된 경기 데이터 딕셔너리
+                                 페이지 로드 실패 또는 필수 데이터 없을 시 None
+
+    Note:
+        - WebDriver는 함수 종료 시 자동으로 종료됨 (finally 블록)
+        - 부분적인 데이터 누락은 허용 (None 값으로 표시)
+        - 페이지 로드 실패나 필수 테이블 부재 시에만 None 반환
+    """
+    # Chrome WebDriver 초기화
+    driver = setup_chrome_driver()
+
+    try:
+        return _scrape_single_match_with_driver(driver, url, year, league_name)
     finally:
         # 리소스 정리: WebDriver 종료
         driver.quit()
@@ -802,7 +864,8 @@ def scrape_season_matches(
         - 월별 페이지 로드 실패는 무시하고 계속 진행
         - 개별 경기 수집 실패 시에도 다른 경기는 계속 수집
     """
-    driver = setup_chrome_driver()
+    # 성능 최적화된 드라이버 사용
+    driver = setup_chrome_driver(optimized=True)
     season_data = []
 
     try:
@@ -855,10 +918,10 @@ def scrape_season_matches(
         )
 
         # ====================================================================
-        # [2단계] 경기 상세 데이터 수집
+        # [2단계] 경기 상세 데이터 수집 (드라이버 재사용으로 성능 개선)
         # ====================================================================
         for match_url in track(all_match_urls, description=f"[cyan]수집 현황:[/cyan]"):
-            match_data = scrape_single_match(match_url, year, league_display_name)
+            match_data = _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
             if match_data:
                 season_data.append(match_data)
 
@@ -869,9 +932,138 @@ def scrape_season_matches(
     return season_data
 
 
+def _scrape_match_worker(args: Tuple[str, int, str]) -> Optional[Dict[str, Any]]:
+    """
+    병렬 처리를 위한 워커 함수.
+    각 스레드에서 독립적으로 드라이버를 생성하여 경기 데이터를 수집합니다.
+
+    Args:
+        args: (match_url, year, league_display_name) 튜플
+
+    Returns:
+        Optional[Dict[str, Any]]: 수집된 경기 데이터 또는 None
+    """
+    match_url, year, league_display_name = args
+
+    # 각 워커마다 독립적인 드라이버 생성
+    driver = setup_chrome_driver(optimized=True)
+
+    try:
+        return _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
+    finally:
+        driver.quit()
+
+
+def scrape_season_matches_parallel(
+    league_category: str,
+    year: int,
+    league_display_name: str,
+    max_workers: int = 4
+) -> List[Dict[str, Any]]:
+    """
+    전체 시즌(1~12월)의 모든 경기를 병렬로 스크래핑합니다.
+    (성능 최적화: 멀티스레딩)
+
+    2단계 스크래핑 전략:
+        [1단계] URL 수집: 1~12월의 모든 경기 URL을 먼저 수집
+        [2단계] 병렬 데이터 수집: 여러 스레드로 동시에 경기 데이터 추출
+
+    Args:
+        league_category: 리그 카테고리 코드 (j1, j2, j3, playoff, 2playoff)
+        year: 시즌 연도
+        league_display_name: 사용자에게 표시할 리그 이름
+        max_workers: 동시 실행할 스레드 수 (기본값: 4)
+                    권장 범위: 2~8 (너무 많으면 웹사이트에 부하)
+
+    Returns:
+        List[Dict[str, Any]]: 시즌 전체 경기 데이터 리스트
+
+    Note:
+        - 각 스레드가 독립적인 WebDriver 인스턴스 사용
+        - 웹사이트 정책을 고려하여 max_workers는 4~6 권장
+        - 개별 경기 수집 실패 시에도 다른 경기는 계속 수집
+    """
+    # URL 수집용 드라이버 (한 번만 사용)
+    driver = setup_chrome_driver(optimized=True)
+    season_data = []
+
+    try:
+        # ====================================================================
+        # [1단계] 전체 시즌 URL 수집
+        # ====================================================================
+        all_match_urls = []
+
+        for month in range(1, 13):  # 1월 ~ 12월
+            url = JLEAGUE_SEARCH_URL.format(
+                league=league_category,
+                year=year,
+                month=month
+            )
+            driver.get(url)
+
+            try:
+                WebDriverWait(driver, MATCH_LIST_WAIT_TIMEOUT).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "section.matchlistWrap"))
+                )
+
+                match_link_elements = driver.find_elements(By.CSS_SELECTOR, MATCH_LIST_SELECTOR)
+
+                month_urls = [
+                    link.get_attribute("href")
+                    for link in match_link_elements
+                    if link.get_attribute("href")
+                ]
+
+                all_match_urls.extend(month_urls)
+
+            except TimeoutException:
+                continue
+            except Exception:
+                continue
+
+    finally:
+        driver.quit()
+
+    # ====================================================================
+    # [2단계] 병렬 경기 데이터 수집
+    # ====================================================================
+    console = Console()
+    console.print(
+        f"\n[bold magenta][{year}년 {league_display_name} 경기 데이터] "
+        f"(총 {len(all_match_urls)}경기, {max_workers}개 동시 처리)[/bold magenta]",
+        style="bold"
+    )
+
+    # 워커 함수에 전달할 인자 준비
+    task_args = [(url, year, league_display_name) for url in all_match_urls]
+
+    # 병렬 처리 with 진행률 표시
+    with Progress() as progress:
+        task = progress.add_task("[cyan]수집 현황:[/cyan]", total=len(task_args))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 작업 제출
+            future_to_url = {
+                executor.submit(_scrape_match_worker, args): args[0]
+                for args in task_args
+            }
+
+            # 완료된 작업부터 처리
+            for future in as_completed(future_to_url):
+                match_data = future.result()
+                if match_data:
+                    season_data.append(match_data)
+
+                progress.update(task, advance=1)
+
+    return season_data
+
+
 def collect_jleague_match_data(
     year: int | List[int],
-    league: str | List[str] = "J리그1"
+    league: str | List[str] = "J리그1",
+    parallel: bool = False,
+    max_workers: int = 4
 ) -> Tuple[List[Dict[str, Any]], str]:
     """
     J리그 경기 데이터를 수집하는 최상위 공개 API 함수입니다.
@@ -892,6 +1084,9 @@ def collect_jleague_match_data(
         # 플레이오프만 수집
         >>> data, filename = collect_jleague_match_data(2024, "J리그1PO")
 
+        # 병렬 처리로 빠르게 수집
+        >>> data, filename = collect_jleague_match_data(2024, "J리그1", parallel=True, max_workers=4)
+
     Args:
         year: 수집할 시즌 연도
             - int: 단일 연도 (예: 2025)
@@ -905,6 +1100,10 @@ def collect_jleague_match_data(
                 * "J리그3": J3 리그
                 * "J리그1PO": J1 플레이오프
                 * "J리그2PO": J2 플레이오프
+        parallel: 병렬 처리 사용 여부 (기본값: False)
+                  True로 설정 시 멀티스레딩으로 빠르게 수집
+        max_workers: 병렬 처리 시 동시 스레드 수 (기본값: 4)
+                    권장 범위: 2~8
 
     Returns:
         Tuple[List[Dict[str, Any]], str]:
@@ -921,6 +1120,7 @@ def collect_jleague_match_data(
         - 개별 시즌 수집 실패 시 에러 메시지 출력 후 계속 진행
         - 수집 진행 상황은 콘솔에 실시간으로 표시됨
         - 빈 데이터가 반환될 수 있음 (모든 수집 실패 시)
+        - parallel=True 사용 시 웹사이트에 과부하를 주지 않도록 주의
     """
     # ========================================================================
     # 리그 이름 → URL 카테고리 매핑 테이블
@@ -971,12 +1171,20 @@ def collect_jleague_match_data(
 
         for year_val in years:
             try:
-                # 시즌 데이터 수집
-                season_data = scrape_season_matches(
-                    league_category,
-                    year_val,
-                    league_name
-                )
+                # 시즌 데이터 수집 (병렬/순차 선택)
+                if parallel:
+                    season_data = scrape_season_matches_parallel(
+                        league_category,
+                        year_val,
+                        league_name,
+                        max_workers
+                    )
+                else:
+                    season_data = scrape_season_matches(
+                        league_category,
+                        year_val,
+                        league_name
+                    )
                 dataset.extend(season_data)
 
             except Exception as e:
