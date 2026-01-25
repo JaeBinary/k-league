@@ -124,7 +124,7 @@ def save_to_db(
     Returns:
         저장된 DB 파일 경로, 실패 시 None
     """
-    db_path = db_path or os.path.join(DATA_DIR, "kleague.db")
+    db_path = db_path or os.path.join(DATA_DIR, "match.db")
 
     df = _to_dataframe(data)
     if df is None or df.empty:
