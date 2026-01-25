@@ -13,7 +13,7 @@ def main() -> None:
     """
     dataset, file_name = collect_kleague_match_data([2023, 2025], ["K리그1", "K리그2"])
     csv_file_path = save_to_csv(dataset, file_name)
-    save_to_db(csv_file_path, table_name="match")
+    save_to_db(csv_file_path, table_name="kleague")
     """
 
     # K리그 preview 데이터 수집 후 CSV 저장 및 DB 변환
@@ -26,7 +26,7 @@ def main() -> None:
     # J리그 match 데이터 수집 후 CSV 저장 및 DB 변환
     dataset, file_name = collect_jleague_match_data([2023, 2025], ["J리그1", "J리그2", "J리그3"])
     csv_file_path = save_to_csv(dataset, file_name)
-    save_to_db(csv_file_path, table_name="match")
+    save_to_db(csv_file_path, table_name="jleague")
 
 if __name__ == "__main__":
     main()
