@@ -1151,8 +1151,8 @@ def scrape_season_matches_parallel(
     # ====================================================================
     console = Console()
     console.print(
-        f"\n[bold magenta][{year}년 {league_display_name} 경기 데이터] "
-        f"(총 {len(all_match_urls)}경기, {max_workers}개 동시 처리)[/bold magenta]",
+        f"\n[bold magenta][{year}년 {league_display_name} 경기 데이터][/bold magenta] "
+        f"(총 {len(all_match_urls)}경기)",
         style="bold"
     )
 
@@ -1164,7 +1164,7 @@ def scrape_season_matches_parallel(
     failed_tasks = []  # 실패한 작업 추적
 
     with Progress() as progress:
-        task = progress.add_task("[cyan]수집 현황:[/cyan]", total=len(task_args))
+        task = progress.add_task("[cyan]수집 현황: [/cyan]", total=len(task_args))
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 작업 제출
