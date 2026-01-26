@@ -1222,7 +1222,7 @@ def scrape_season_matches_parallel(
 def collect_jleague_match_data(
     year: int | List[int],
     league: str | List[str] = "J리그1",
-    parallel: bool = False,
+    parallel: bool = True,
     max_workers: int = 4
 ) -> Tuple[List[Dict[str, Any]], str]:
     """J리그 경기 데이터를 수집하는 최상위 공개 API 함수입니다.
@@ -1259,7 +1259,7 @@ def collect_jleague_match_data(
                 * "J리그3": J3 리그
                 * "J리그1PO": J1 플레이오프
                 * "J리그2PO": J2 플레이오프
-        parallel: 병렬 처리 사용 여부 (기본값: False)
+        parallel: 병렬 처리 사용 여부 (기본값: True)
             True 설정 시 멀티스레딩으로 빠른 수집
         max_workers: 병렬 처리 시 동시 스레드 수 (기본값: 4)
             권장 범위: 2~8
