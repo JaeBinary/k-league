@@ -1164,7 +1164,7 @@ def scrape_season_matches_parallel(
     failed_tasks = []  # 실패한 작업 추적
 
     with Progress() as progress:
-        task = progress.add_task("[cyan]수집 현황: [/cyan]", total=len(task_args))
+        task = progress.add_task("[cyan]수집 현황:[/cyan]", total=len(task_args))
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 작업 제출
