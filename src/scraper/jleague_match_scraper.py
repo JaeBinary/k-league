@@ -812,7 +812,8 @@ def _scrape_single_match_with_driver(
     driver: webdriver.Chrome,
     url: str,
     year: int,
-    league_name: str
+    league_name: str,
+    include_tracking: bool = True
 ) -> Optional[Dict[str, Any]]:
     """기존 WebDriver를 재사용하여 단일 경기의 모든 데이터를 수집합니다.
 
@@ -821,7 +822,7 @@ def _scrape_single_match_with_driver(
         2. 스타디움 테이블에서 관중/날씨 정보 추출
         3. 데이터 정제 (타입 변환, 파싱)
         4. 메타데이터 추출 (라운드, 날짜, 팀명)
-        5. 트래킹 데이터 추출 (주행거리, 스프린트)
+        5. 트래킹 데이터 추출 (주행거리, 스프린트) - include_tracking=True일 때만
         6. 모든 데이터를 하나의 딕셔너리로 통합
 
     Args:
@@ -829,6 +830,7 @@ def _scrape_single_match_with_driver(
         url: J리그 경기 상세 페이지 URL
         year: 시즌 연도
         league_name: 리그 이름
+        include_tracking: 트래킹 데이터 포함 여부 (기본값: True)
 
     Returns:
         Optional[Dict[str, Any]]: 통합된 경기 데이터 딕셔너리
@@ -837,6 +839,7 @@ def _scrape_single_match_with_driver(
     Note:
         - 성능 최적화: 드라이버 재사용으로 인스턴스 생성 오버헤드 제거
         - 부분 데이터 허용: 일부 필드 누락 시에도 수집 가능
+        - include_tracking=False 시 트래킹 관련 필드는 최종 데이터에 포함되지 않음
     """
     try:
         # 경기 페이지 로드
@@ -866,9 +869,10 @@ def _scrape_single_match_with_driver(
         processed_data.update(extract_datetime_info(driver))   # 날짜/시간
         processed_data.update(extract_team_names(driver))      # 팀명
 
-        # Step 5: 트래킹 데이터 추출
-        activate_tracking_tab(driver)                          # 탭 활성화
-        processed_data.update(extract_tracking_data(driver))   # 주행거리/스프린트
+        # Step 5: 트래킹 데이터 추출 (include_tracking=True일 때만)
+        if include_tracking:
+            activate_tracking_tab(driver)                          # 탭 활성화
+            processed_data.update(extract_tracking_data(driver))   # 주행거리/스프린트
 
         # Step 6: 최종 데이터 구조 생성
         final_data = {
@@ -879,15 +883,20 @@ def _scrape_single_match_with_driver(
             MatchDataKeys.DAY: processed_data.get("Day"),
             MatchDataKeys.HOME_TEAM: processed_data.get("HomeTeam"),
             MatchDataKeys.AWAY_TEAM: processed_data.get("AwayTeam"),
-            MatchDataKeys.HOME_DISTANCE: processed_data.get("HomeDistance"),
-            MatchDataKeys.AWAY_DISTANCE: processed_data.get("AwayDistance"),
-            MatchDataKeys.HOME_SPRINT: processed_data.get("HomeSprint"),
-            MatchDataKeys.AWAY_SPRINT: processed_data.get("AwaySprint"),
             MatchDataKeys.AUDIENCE_QTY: processed_data.get("Attendance"),
             MatchDataKeys.WEATHER: processed_data.get("Weather"),
             MatchDataKeys.TEMPERATURE: processed_data.get("Temperature"),
             MatchDataKeys.HUMIDITY: processed_data.get("Humidity")
         }
+
+        # 트래킹 데이터는 include_tracking=True일 때만 추가
+        if include_tracking:
+            final_data.update({
+                MatchDataKeys.HOME_DISTANCE: processed_data.get("HomeDistance"),
+                MatchDataKeys.AWAY_DISTANCE: processed_data.get("AwayDistance"),
+                MatchDataKeys.HOME_SPRINT: processed_data.get("HomeSprint"),
+                MatchDataKeys.AWAY_SPRINT: processed_data.get("AwaySprint")
+            })
 
         logger.debug(f"경기 데이터 수집 완료: {final_data.get('HomeTeam')} vs {final_data.get('AwayTeam')}")
         return final_data
@@ -897,7 +906,7 @@ def _scrape_single_match_with_driver(
         return None
 
 
-def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[str, Any]]:
+def scrape_single_match(url: str, year: int, league_name: str, include_tracking: bool = True) -> Optional[Dict[str, Any]]:
     """단일 경기 페이지에서 모든 경기 데이터를 수집합니다.
 
     독립적인 WebDriver 인스턴스를 생성하여 하나의 경기 데이터만 수집합니다.
@@ -912,10 +921,10 @@ def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[
             "Day": "토",
             "HomeTeam": "浦和レッズ",
             "AwayTeam": "鹿島アントラーズ",
-            "HomeDistance": "115.2",
-            "AwayDistance": "112.8",
-            "HomeSprint": "45",
-            "AwaySprint": "38",
+            "HomeDistance": "115.2",  # include_tracking=True일 때만
+            "AwayDistance": "112.8",  # include_tracking=True일 때만
+            "HomeSprint": "45",       # include_tracking=True일 때만
+            "AwaySprint": "38",       # include_tracking=True일 때만
             "Audience_Qty": 45123,
             "Weather": "맑음",
             "Temperature": "25",
@@ -927,6 +936,7 @@ def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[
             예시: https://www.jleague.jp/match/j1/2025/031500/live/
         year: 시즌 연도
         league_name: 리그 이름
+        include_tracking: 트래킹 데이터 포함 여부 (기본값: True)
 
     Returns:
         Optional[Dict[str, Any]]: 통합된 경기 데이터 딕셔너리
@@ -940,7 +950,7 @@ def scrape_single_match(url: str, year: int, league_name: str) -> Optional[Dict[
     driver = setup_chrome_driver()
 
     try:
-        return _scrape_single_match_with_driver(driver, url, year, league_name)
+        return _scrape_single_match_with_driver(driver, url, year, league_name, include_tracking)
     finally:
         driver.quit()
 
@@ -950,7 +960,8 @@ def scrape_monthly_matches(
     league_category: str,
     year: int,
     month: int,
-    league_display_name: str
+    league_display_name: str,
+    include_tracking: bool = True
 ) -> List[Dict[str, Any]]:
     """특정 월의 모든 경기를 스크래핑합니다.
 
@@ -965,6 +976,7 @@ def scrape_monthly_matches(
         year: 시즌 연도 (예: 2025)
         month: 월 (1~12)
         league_display_name: 사용자에게 표시할 리그 이름
+        include_tracking: 트래킹 데이터 포함 여부 (기본값: True)
 
     Returns:
         List[Dict[str, Any]]: 해당 월의 모든 경기 데이터 리스트
@@ -984,7 +996,7 @@ def scrape_monthly_matches(
     # 각 경기 데이터 수집 (진행률 표시)
     monthly_data = []
     for match_url in track(match_urls, description=f"[cyan]{month}월 경기 수집:[/cyan]"):
-        match_data = scrape_single_match(match_url, year, league_display_name)
+        match_data = scrape_single_match(match_url, year, league_display_name, include_tracking)
         if match_data:
             monthly_data.append(match_data)
 
@@ -994,7 +1006,8 @@ def scrape_monthly_matches(
 def scrape_season_matches(
     league_category: str,
     year: int,
-    league_display_name: str
+    league_display_name: str,
+    include_tracking: bool = True
 ) -> List[Dict[str, Any]]:
     """전체 시즌(1~12월)의 모든 경기를 순차적으로 스크래핑합니다.
 
@@ -1017,6 +1030,7 @@ def scrape_season_matches(
         year: 시즌 연도
         league_display_name: 사용자에게 표시할 리그 이름
             예시: "J리그1", "J리그2", "J리그1PO"
+        include_tracking: 트래킹 데이터 포함 여부 (기본값: True)
 
     Returns:
         List[Dict[str, Any]]: 시즌 전체 경기 데이터 리스트
@@ -1051,7 +1065,7 @@ def scrape_season_matches(
         # [2단계] 경기 상세 데이터 수집 (드라이버 재사용으로 성능 개선)
         # ====================================================================
         for match_url in track(all_match_urls, description=f"[cyan]수집 현황:[/cyan]"):
-            match_data = _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
+            match_data = _scrape_single_match_with_driver(driver, match_url, year, league_display_name, include_tracking)
             if match_data:
                 season_data.append(match_data)
 
@@ -1061,14 +1075,14 @@ def scrape_season_matches(
     return season_data
 
 
-def _scrape_match_worker(args: Tuple[str, int, str], max_retries: int = 3) -> Optional[Dict[str, Any]]:
+def _scrape_match_worker(args: Tuple[str, int, str, bool], max_retries: int = 3) -> Optional[Dict[str, Any]]:
     """병렬 처리를 위한 워커 함수 (재시도 로직 포함).
 
     각 스레드에서 독립적으로 WebDriver를 생성하여 경기 데이터를 수집합니다.
     SessionNotCreatedException 발생 시 자동으로 재시도합니다.
 
     Args:
-        args: (match_url, year, league_display_name) 튜플
+        args: (match_url, year, league_display_name, include_tracking) 튜플
         max_retries: ChromeDriver 생성 실패 시 최대 재시도 횟수 (기본값: 3)
 
     Returns:
@@ -1079,13 +1093,13 @@ def _scrape_match_worker(args: Tuple[str, int, str], max_retries: int = 3) -> Op
         - ChromeDriver 생성 실패 시 최대 3회 재시도
         - 워커 종료 시 자동으로 드라이버 종료 (리소스 관리)
     """
-    match_url, year, league_display_name = args
+    match_url, year, league_display_name, include_tracking = args
 
     for attempt in range(max_retries):
         driver = None
         try:
             driver = setup_chrome_driver(optimized=True)
-            result = _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
+            result = _scrape_single_match_with_driver(driver, match_url, year, league_display_name, include_tracking)
             return result
         except SessionNotCreatedException as e:
             logger.warning(
@@ -1105,7 +1119,8 @@ def scrape_season_matches_parallel(
     league_category: str,
     year: int,
     league_display_name: str,
-    max_workers: int = 4
+    max_workers: int = 4,
+    include_tracking: bool = True
 ) -> List[Dict[str, Any]]:
     """전체 시즌(1~12월)의 모든 경기를 병렬로 스크래핑합니다.
 
@@ -1120,6 +1135,7 @@ def scrape_season_matches_parallel(
         league_display_name: 사용자에게 표시할 리그 이름
         max_workers: 동시 실행할 스레드 수 (기본값: 4)
             권장 범위: 2~8 (너무 많으면 웹사이트에 부하)
+        include_tracking: 트래킹 데이터 포함 여부 (기본값: True)
 
     Returns:
         List[Dict[str, Any]]: 시즌 전체 경기 데이터 리스트
@@ -1157,7 +1173,7 @@ def scrape_season_matches_parallel(
     )
 
     # 워커 함수에 전달할 인자 준비
-    task_args = [(url, year, league_display_name) for url in all_match_urls]
+    task_args = [(url, year, league_display_name, include_tracking) for url in all_match_urls]
 
     # 병렬 처리 with 진행률 표시
     season_data = []
@@ -1201,9 +1217,9 @@ def scrape_season_matches_parallel(
 
         retry_data = []
         for args in track(failed_tasks, description=f"[yellow]재수집 현황:[/yellow]"):
-            match_url, year_val, league_name = args
+            match_url, year_val, league_name, include_tracking_flag = args
             # 재시도는 순차적으로 수행 (안정성 우선)
-            match_data = scrape_single_match(match_url, year_val, league_name)
+            match_data = scrape_single_match(match_url, year_val, league_name, include_tracking_flag)
             if match_data:
                 retry_data.append(match_data)
                 logger.info(f"재수집 성공: {match_url}")
@@ -1318,9 +1334,32 @@ def collect_jleague_match_data(
     # 파일명 생성
     # ========================================================================
     if len(league_list) == 1:
+        # 단일 리그: j1, j2, j3 등
         league_label: str = LEAGUE_TO_CATEGORY[league_list[0]]
-    else:
+    elif set(league_list) == {"J리그1", "J리그2", "J리그3"}:
+        # 3개 리그 전체: jleague
         league_label = "jleague"
+    else:
+        # 2개 이상이지만 전체가 아닐 때: jleague1,2 형식
+        league_numbers = []
+        for league_name in sorted(league_list, key=lambda x: league_list.index(x)):
+            if "J리그1" == league_name:
+                league_numbers.append("1")
+            elif "J리그2" == league_name:
+                league_numbers.append("2")
+            elif "J리그3" == league_name:
+                league_numbers.append("3")
+            elif "J리그1PO" == league_name:
+                league_numbers.append("1po")
+            elif "J리그2PO" == league_name:
+                league_numbers.append("2po")
+        league_label = "jleague" + ",".join(league_numbers)
+
+    # ========================================================================
+    # 트래킹 데이터 포함 여부 결정
+    # ========================================================================
+    # 오직 J리그1만 수집할 때만 트래킹 데이터 포함
+    include_tracking = (league_list == ["J리그1"])
 
     # ========================================================================
     # 데이터 수집 (중첩 루프: 리그 × 연도)
@@ -1338,13 +1377,15 @@ def collect_jleague_match_data(
                         league_category,
                         year_val,
                         league_name,
-                        max_workers
+                        max_workers,
+                        include_tracking
                     )
                 else:
                     season_data = scrape_season_matches(
                         league_category,
                         year_val,
-                        league_name
+                        league_name,
+                        include_tracking
                     )
                 dataset.extend(season_data)
 
