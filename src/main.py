@@ -10,11 +10,11 @@ def main() -> None:
     """
 
     # K리그 match 데이터 수집 후 CSV 저장 및 DB 변환
-    """
+    #"""
     dataset, file_name = collect_kleague_match_data([2023, 2025], ["K리그1", "K리그2"])
     csv_file_path = save_to_csv(dataset, file_name)
     save_to_db(csv_file_path, table_name="kleague")
-    """
+    #"""
 
     # K리그 preview 데이터 수집 후 CSV 저장 및 DB 변환
     """
