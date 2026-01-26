@@ -24,9 +24,11 @@ def main() -> None:
     """
 
     # J리그 match 데이터 수집 후 CSV 저장 및 DB 변환
-    dataset, file_name = collect_jleague_match_data(2025, "J리그1", parallel=True, max_workers=4)
+    #"""
+    dataset, file_name = collect_jleague_match_data([2023, 2025], ["J리그1"], parallel=True, max_workers=4)
     csv_file_path = save_to_csv(dataset, file_name)
     save_to_db(csv_file_path, table_name="jleague")
+    #"""
 
 if __name__ == "__main__":
     main()
