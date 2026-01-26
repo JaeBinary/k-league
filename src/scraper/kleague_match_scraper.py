@@ -444,7 +444,7 @@ def collect_kleague_match_data(
             )
 
             # 각 경기 데이터 수집 (진행률 표시)
-            for game_id in track(games, description=f"[cyan]수집 현황: [/cyan]"):
+            for game_id in track(games, description=f"[cyan]수집 현황:[/cyan]"):
                 # K리그 경기 페이지 URL 생성
                 url = (
                     f"https://www.kleague.com/match.do?"
