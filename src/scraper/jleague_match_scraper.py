@@ -47,7 +47,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, SessionNotCreatedException
 
 from rich.console import Console
 from rich.progress import track, Progress
@@ -1061,29 +1061,44 @@ def scrape_season_matches(
     return season_data
 
 
-def _scrape_match_worker(args: Tuple[str, int, str]) -> Optional[Dict[str, Any]]:
-    """병렬 처리를 위한 워커 함수.
+def _scrape_match_worker(args: Tuple[str, int, str], max_retries: int = 3) -> Optional[Dict[str, Any]]:
+    """병렬 처리를 위한 워커 함수 (재시도 로직 포함).
 
     각 스레드에서 독립적으로 WebDriver를 생성하여 경기 데이터를 수집합니다.
+    SessionNotCreatedException 발생 시 자동으로 재시도합니다.
 
     Args:
         args: (match_url, year, league_display_name) 튜플
+        max_retries: ChromeDriver 생성 실패 시 최대 재시도 횟수 (기본값: 3)
 
     Returns:
         Optional[Dict[str, Any]]: 수집된 경기 데이터 또는 None
 
     Note:
         - 각 워커는 독립적인 WebDriver 인스턴스 사용
+        - ChromeDriver 생성 실패 시 최대 3회 재시도
         - 워커 종료 시 자동으로 드라이버 종료 (리소스 관리)
     """
     match_url, year, league_display_name = args
 
-    driver = setup_chrome_driver(optimized=True)
+    for attempt in range(max_retries):
+        driver = None
+        try:
+            driver = setup_chrome_driver(optimized=True)
+            result = _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
+            return result
+        except SessionNotCreatedException as e:
+            logger.warning(
+                f"ChromeDriver 생성 실패 (시도 {attempt + 1}/{max_retries})"
+            )
+            if attempt == max_retries - 1:
+                # 모든 재시도 실패 시 예외를 다시 발생시켜 상위에서 처리
+                raise
+        finally:
+            if driver:
+                driver.quit()
 
-    try:
-        return _scrape_single_match_with_driver(driver, match_url, year, league_display_name)
-    finally:
-        driver.quit()
+    return None
 
 
 def scrape_season_matches_parallel(
@@ -1094,9 +1109,10 @@ def scrape_season_matches_parallel(
 ) -> List[Dict[str, Any]]:
     """전체 시즌(1~12월)의 모든 경기를 병렬로 스크래핑합니다.
 
-    2단계 스크래핑 전략:
+    3단계 스크래핑 전략:
         [1단계] URL 수집: 1~12월의 모든 경기 URL 수집
         [2단계] 병렬 데이터 수집: 여러 스레드로 동시에 경기 데이터 추출
+        [3단계] 실패 URL 재수집: 1차 수집 실패한 경기를 재시도
 
     Args:
         league_category: 리그 카테고리 코드 (j1, j2, j3, playoff, 2playoff)
@@ -1111,7 +1127,7 @@ def scrape_season_matches_parallel(
     Note:
         - 각 스레드가 독립적인 WebDriver 인스턴스 사용
         - 웹사이트 정책을 고려하여 max_workers는 4~6 권장
-        - 개별 경기 수집 실패 시에도 다른 경기는 계속 수집
+        - 실패한 경기는 자동으로 재수집하여 데이터 손실 최소화
         - 순차 모드 대비 4~8배 빠른 속도
     """
     # URL 수집용 드라이버 (한 번만 사용)
@@ -1145,26 +1161,60 @@ def scrape_season_matches_parallel(
 
     # 병렬 처리 with 진행률 표시
     season_data = []
+    failed_tasks = []  # 실패한 작업 추적
+
     with Progress() as progress:
         task = progress.add_task("[cyan]수집 현황:[/cyan]", total=len(task_args))
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 작업 제출
-            future_to_url = {
-                executor.submit(_scrape_match_worker, args): args[0]
+            future_to_args = {
+                executor.submit(_scrape_match_worker, args): args
                 for args in task_args
             }
 
             # 완료된 작업부터 처리
-            for future in as_completed(future_to_url):
+            for future in as_completed(future_to_args):
+                args = future_to_args[future]
                 try:
                     match_data = future.result()
                     if match_data:
                         season_data.append(match_data)
+                    else:
+                        # 데이터가 None인 경우 (페이지 로드 실패 등)
+                        failed_tasks.append(args)
+                        logger.warning(f"데이터 수집 실패 (재시도 예정): {args[0]}")
                 except Exception as e:
-                    logger.error(f"워커 스레드 예외: {type(e).__name__} - {e}")
+                    # 예외 발생 시 실패 목록에 추가
+                    failed_tasks.append(args)
+                    logger.error(f"워커 스레드 예외 (재시도 예정): {type(e).__name__} - {e}")
 
                 progress.update(task, advance=1)
+
+    # ====================================================================
+    # [3단계] 실패한 경기 재수집
+    # ====================================================================
+    if failed_tasks:
+        console.print(
+            f"\n[bold yellow]실패한 {len(failed_tasks)}경기 재수집 시작...[/bold yellow]"
+        )
+
+        retry_data = []
+        for args in track(failed_tasks, description=f"[yellow]재수집 현황:[/yellow]"):
+            match_url, year_val, league_name = args
+            # 재시도는 순차적으로 수행 (안정성 우선)
+            match_data = scrape_single_match(match_url, year_val, league_name)
+            if match_data:
+                retry_data.append(match_data)
+                logger.info(f"재수집 성공: {match_url}")
+            else:
+                logger.error(f"재수집 실패: {match_url}")
+
+        season_data.extend(retry_data)
+
+        console.print(
+            f"[bold green]재수집 완료: {len(retry_data)}/{len(failed_tasks)}건 성공[/bold green]"
+        )
 
     return season_data
 
