@@ -140,7 +140,7 @@ k-league/
 
 #### 4. Documentation (상세 문서)
 
-자세한 사용법은 [docs/README.md](./docs/README.md)를 참고하세요.
+자세한 사용법은 [docs/README.md](./docs/README.md)를 참고.
 
 | 문서 | 설명 |
 |-----|------|
