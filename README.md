@@ -152,7 +152,7 @@ k-league/
 
 ### References & Data Sources
 ---
-#### 1. Target Domain Sources (Data Crawling)
+#### 1. Target Domain Sources
 * **K League Official Website:** `https://www.kleague.com/index.do`
     * *Purpose:* K리그 역대 관중 수 및 경기 일정 데이터 확보 (Control Group)
 * **J League Official Website:** `https://www.jleague.jp`
