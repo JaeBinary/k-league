@@ -76,6 +76,80 @@
 2.  **마케팅 인사이트:** "팬들은 많이 뛰는 팀을 보러 온다"는 가설 입증을 통해, 구단들에 '공격적/활동적 경기 운영'의 동기 부여 제공.
 3.  **확장성:** 향후 K리그 공식 부가 데이터(Tracking Data) 도입 시 활용 가능한 분석 프레임워크 마련.
 
+### Getting Started (빠른 시작)
+---
+#### 1. Installation (설치)
+
+```bash
+# 저장소 클론
+git clone https://github.com/JaeBinary/k-league.git
+cd k-league
+
+# 필수 패키지 설치
+pip install pandas beautifulsoup4 selenium rich requests sqlalchemy
+```
+
+#### 2. Quick Start (사용 예시)
+
+```python
+# K리그 데이터 수집 및 저장
+from src.scraper.kleague_match_scraper import collect_kleague_match_data
+from src.saver import save_to_csv, save_to_db
+
+# 2025년 K리그1 데이터 수집
+data, filename = collect_kleague_match_data(year=2025, league="K리그1")
+
+# CSV 파일로 저장
+save_to_csv(data, filename)
+
+# SQLite DB로 저장
+save_to_db(data, table_name="kleague1_2025")
+```
+
+```python
+# J리그 데이터 수집 (트래킹 데이터 포함)
+from src.scraper.jleague_match_scraper import collect_jleague_match_data
+from src.saver import save_to_csv
+
+# 2025년 J리그1 데이터 수집 (병렬 처리)
+data, filename = collect_jleague_match_data(year=2025, league="J리그1", parallel=True)
+
+# 저장
+save_to_csv(data, filename)
+```
+
+#### 3. Project Structure (프로젝트 구조)
+
+```
+k-league/
+├── src/
+│   ├── scraper/                 # 데이터 수집 모듈
+│   │   ├── kleague_match_scraper.py   # K리그 스크래퍼
+│   │   ├── jleague_match_scraper.py   # J리그 스크래퍼
+│   │   └── scraper.py                 # 공통 유틸리티
+│   └── saver/                   # 데이터 저장 모듈
+│       ├── csv_saver.py               # CSV 저장
+│       └── db_saver.py                # SQLite DB 저장
+├── data/                        # 수집된 데이터 저장 위치
+├── docs/                        # 기술 문서
+│   ├── README.md                      # 문서 메인 페이지
+│   ├── scraper/                       # 스크래퍼 문서
+│   └── saver/                         # Saver 문서
+└── notebooks/                   # 분석 노트북
+```
+
+#### 4. Documentation (상세 문서)
+
+자세한 사용법은 [docs/README.md](./docs/README.md)를 참고하세요.
+
+| 문서 | 설명 |
+|-----|------|
+| [Scraper 시작하기](./docs/scraper/get-started.md) | 데이터 수집 빠른 시작 |
+| [Saver 시작하기](./docs/saver/get-started.md) | 데이터 저장 빠른 시작 |
+| [K리그 튜토리얼](./docs/scraper/tutorials/kleague-tutorial.md) | K리그 수집 단계별 가이드 |
+| [J리그 튜토리얼](./docs/scraper/tutorials/jleague-tutorial.md) | J리그 수집 단계별 가이드 |
+| [데이터 스키마](./docs/scraper/explanations/data-schema.md) | 수집 데이터 필드 정의 |
+
 ### References & Data Sources
 ---
 #### 1. Target Domain Sources (Data Crawling)
@@ -84,12 +158,17 @@
 * **J League Official Website:** `https://www.jleague.jp`
     * *Purpose:* J1~J3 리그별 구조 파악 및 공식 경기 기록 수집 (Experimental Group)
 
-#### 2. Tech Stack Documentation
-* **Beautiful Soup 4:** `https://www.crummy.com/software/BeautifulSoup/bs4/doc`
-    * *Usage:* 정적 웹 페이지(Static Page)의 HTML 파싱 및 데이터 추출
-* **Selenium:** `https://www.selenium.dev/documentation`
-    * *Usage:* 동적 웹 페이지(Dynamic Page) 제어 및 자바스크립트 렌더링 데이터 수집
+#### 2. Tech Stack
+| 도구 | 용도 |
+|-----|------|
+| **Python 3.8+** | 기본 언어 |
+| **pandas** | 데이터 처리 및 변환 |
+| **BeautifulSoup4** | HTML 파싱 (K리그 정적 페이지) |
+| **Selenium** | 동적 페이지 크롤링 (J리그) |
+| **SQLAlchemy** | 데이터베이스 연동 |
+| **Rich** | 콘솔 진행률 표시 |
 
-#### 3. Internal Resources
-* **Lecture Material:** Day7_0 - 정적 스크래이핑 (BeautifulSoup)
-    * *Application:* 크롤러 설계 및 파싱 로직 구현 참조
+#### 3. Tech Stack Documentation
+* **Beautiful Soup 4:** `https://www.crummy.com/software/BeautifulSoup/bs4/doc`
+* **Selenium:** `https://www.selenium.dev/documentation`
+* **SQLAlchemy:** `https://docs.sqlalchemy.org`
