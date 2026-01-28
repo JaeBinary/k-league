@@ -71,6 +71,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Final, List, Tuple
 
 from bs4 import BeautifulSoup
@@ -128,6 +129,8 @@ class MatchDataKeys:
     AWAY_TEAM = "AwayTeam"            # 어웨이팀명
     HOME_RANK = "HomeRank"            # 홈팀 순위
     AWAY_RANK = "AwayRank"            # 어웨이팀 순위
+    HOME_POINTS = "HomePoints"        # 홈팀 승점
+    AWAY_POINTS = "AwayPoints"        # 어웨이팀 승점
     FIELD_NAME = "Field_Name"         # 경기장명
     AUDIENCE_QTY = "Audience_Qty"     # 관중 수
     WEATHER = "Weather"               # 날씨
@@ -251,6 +254,28 @@ def extract_value(text: str, remove_char: str = "") -> str:
     return value.strip()
 
 
+def calculate_points_from_record(text: str) -> int:
+    """'0승 0무 0패' 텍스트에서 승점을 계산 (승*3 + 무*1)
+    
+    Args:
+        text: 전적 정보가 포함된 원본 텍스트 (예: "3위 2승 1무 0패")
+        
+    Returns:
+        int: 계산된 승점
+    """
+    # 정규표현식으로 숫자 추출: (\d+)승, (\d+)무
+    match = re.search(r'(\d+)승\s*(\d+)무\s*(\d+)패', text)
+    
+    if match:
+        wins = int(match.group(1))
+        draws = int(match.group(2))
+        # losses = int(match.group(3)) # 패배는 승점에 영향 없음
+        
+        return (wins * 3) + (draws * 1)
+            
+    return 0  # 패턴을 찾지 못한 경우 0점 반환
+
+
 # ============================================================================
 # 데이터 파싱 함수 (Data Parsing Functions)
 # ============================================================================
@@ -302,6 +327,8 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
         MatchDataKeys.AWAY_TEAM: None,
         MatchDataKeys.HOME_RANK: 0,
         MatchDataKeys.AWAY_RANK: 0,
+        MatchDataKeys.HOME_POINTS: 0,
+        MatchDataKeys.AWAY_POINTS: 0,
         MatchDataKeys.FIELD_NAME: None,
         MatchDataKeys.AUDIENCE_QTY: None,
         MatchDataKeys.WEATHER: None,
@@ -362,13 +389,12 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
         print("❌ 팀 정보를 찾을 수 없습니다.")
 
     # ========================================================================
-    # 팀 순위 추출
+    # 팀 순위 및 승점 추출
     # ========================================================================
     tag = soup.select_one(CSSSelectors.TEAM_RANK)
 
     if tag:
         # 순위 텍스트를 가진 모든 span 찾기
-        # HTML 순서: [0] = 홈팀 순위, [1] = 어웨이팀 순위
         tags = tag.select(CSSSelectors.TEAM_RANK_SPANS)
 
         # 최소 2개의 순위 정보 필요
@@ -382,6 +408,19 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
             away_rank = tags[1].text.replace("위", "").strip()
             if away_rank.isdigit():
                 data[MatchDataKeys.AWAY_RANK] = int(away_rank)
+
+            # 홈팀 텍스트 추출 (첫 번째 순위 정보의 부모 텍스트)
+            home_text = tags[0].parent.text
+            data[MatchDataKeys.HOME_POINTS] = calculate_points_from_record(home_text)
+            
+            # 어웨이팀 텍스트 추출 (두 번째 순위 정보의 부모 텍스트)
+            away_text = tags[1].parent.text
+            data[MatchDataKeys.AWAY_POINTS] = calculate_points_from_record(away_text)
+        
+        else:
+            # 순위 정보가 없는 경우 (시즌 초반 등) 0점 처리
+            data[MatchDataKeys.HOME_POINTS] = 0
+            data[MatchDataKeys.AWAY_POINTS] = 0
 
     # ========================================================================
     # 경기장 정보 및 환경 데이터 추출
