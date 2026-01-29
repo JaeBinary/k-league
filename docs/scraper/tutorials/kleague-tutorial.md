@@ -62,6 +62,7 @@ print(first_match)
 **출력 예시:**
 ```python
 {
+    # 기본 메타데이터
     'Meet_Year': 2025,
     'LEAGUE_NAME': 'K리그1',
     'Round': '1R',
@@ -72,13 +73,28 @@ print(first_match)
     'AwayTeam': '포항',
     'HomeRank': 1,
     'AwayRank': 3,
+    'HomePoints': 7,
+    'AwayPoints': 4,
     'Field_Name': '울산문수월드컵경기장',
     'Audience_Qty': '15234',
     'Weather': '맑음',
     'Temperature': '8',
-    'Humidity': '45'
+    'Humidity': '45',
+
+    # API 통계 데이터 (일부)
+    'home_possession': 55,
+    'away_possession': 45,
+    'home_attempts': 15,
+    'away_attempts': 8,
+    'home_on_target': 6,
+    'away_on_target': 3,
+    'home_fouls': 12,
+    'away_fouls': 14,
+    # ... 시간대별 점유율 등 추가 필드
 }
 ```
+
+> **참고**: K리그 공식 API를 통해 점유율, 슈팅, 파울, 카드 등 약 30개의 추가 통계 필드가 자동으로 수집됩니다. 자세한 내용은 [데이터 스키마](../explanations/data-schema.md)를 참고하세요.
 
 ### 4단계: 다른 리그 수집
 
