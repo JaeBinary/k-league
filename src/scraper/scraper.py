@@ -16,6 +16,14 @@ USER_AGENT = {
     "User-Agent": os.getenv("USER_AGENT")
 }
 
+# K리그 API 요청용 기본 헤더
+DEFAULT_HEADERS = {
+    **USER_AGENT,
+    "Referer": "https://www.kleague.com/match.do",
+    "Origin": "https://www.kleague.com",
+    "X-Requested-With": "XMLHttpRequest"
+}
+
 
 def fetch_api(
     url: str,
