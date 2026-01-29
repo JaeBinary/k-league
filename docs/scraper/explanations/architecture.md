@@ -47,9 +47,15 @@ K리그 공식 웹사이트는 정적 HTML로 구성되어 있어 단순한 HTTP
          │                   - 순위 정보 추출
          ↓
 ┌──────────────────┐
-│  통합 데이터셋    │  Step 5: 최종 데이터 반환
+│  API 통계 수집   │  Step 5: K리그 공식 API 호출
+│  (API 호출)      │         - matchRecord.do: 슈팅, 파울, 점유율 등
+└────────┬─────────┘         - possession.do: 시간대별 점유율
+         │
+         ↓
+┌──────────────────┐
+│  통합 데이터셋    │  Step 6: 최종 데이터 반환
 │  (리스트 반환)   │         - Dict[str, Any] 리스트
-└──────────────────┘
+└──────────────────┘         - HTML 데이터 + API 통계 병합
 ```
 
 ### 핵심 설계 원리
@@ -67,6 +73,22 @@ SEASON_MATCH_COUNT = {
 ```
 
 3. **CSS Selector 파싱**: BeautifulSoup의 `select_one()`, `select()` 메서드로 일관된 구조의 데이터를 추출합니다.
+
+4. **API 통계 수집**: HTML 파싱 후 공식 API를 통해 추가 통계 데이터를 수집합니다.
+
+```python
+# Step 1: HTML에서 기본 정보 추출
+data = parse_game_info(soup, year, game_id)
+
+# Step 2: API에서 통계 데이터 추가
+stats = get_match_stats(year, meet_seq, game_id)
+if stats:
+    data.update(stats)  # 점유율, 슈팅, 파울 등 병합
+```
+
+API에서 수집되는 데이터:
+- **matchRecord.do**: 점유율, 슈팅, 파울, 카드, 코너킥, 프리킥, 오프사이드
+- **possession.do**: 15분 단위 시간대별 점유율 (전반/후반 각 3구간)
 
 ## J리그 스크래퍼 아키텍처
 
