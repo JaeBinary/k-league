@@ -72,13 +72,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Final, List, Tuple
+from typing import Any, Dict, Final, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.progress import track
 
-from .scraper import fetch_page
+from .scraper import DEFAULT_HEADERS, fetch_api, fetch_page
 
 
 # ============================================================================
@@ -97,6 +97,24 @@ class URLConfig:
         "leagueId=&"
         "startTabNum={start_tab_num}"
     )
+    # API 엔드포인트
+    MATCH_RECORD_API: Final[str] = f"{BASE_URL}/api/ddf/match/matchRecord.do"
+    POSSESSION_API: Final[str] = f"{BASE_URL}/api/ddf/match/possession.do"
+
+
+class APIConfig:
+    """K리그 API 요청 설정"""
+    # matchRecord.do에서 가져올 필드들
+    MATCH_RECORD_FIELDS: Final[List[str]] = [
+        "possession", "attempts", "onTarget", "fouls",
+        "yellowCards", "redCards", "doubleYellowCards",
+        "corners", "freeKicks", "offsides"
+    ]
+    # possession.do에서 가져올 필드들
+    POSSESSION_FIELDS: Final[List[str]] = [
+        "first_15", "first_30", "first_45",
+        "second_15", "second_30", "second_45"
+    ]
 
 
 class LeagueCode:
@@ -214,23 +232,28 @@ class CSSSelectors:
 # ============================================================================
 
 
+def to_snake_case(name: str) -> str:
+    """카멜케이스(camelCase)를 스네이크케이스(snake_case)로 변환합니다.
+
+    Args:
+        name: 변환할 카멜케이스 문자열 (예: "yellowCards")
+
+    Returns:
+        스네이크케이스 문자열 (예: "yellow_cards")
+    """
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
 def extract_value(text: str, remove_char: str = "") -> str:
-    """레이블-값 형식의 문자열에서 값을 추출하고 정제
+    """레이블-값 형식의 문자열에서 값을 추출하고 정제합니다.
 
     K리그 웹사이트는 "항목 : 값" 형식으로 정보를 제공합니다.
     이 함수는 콜론 뒤의 값을 추출하고 불필요한 단위를 제거합니다.
 
-    처리 파이프라인:
-        1. 콜론(:) 기준 문자열 분리
-        2. 마지막 부분(값) 선택
-        3. 지정된 문자(단위) 제거
-        4. 앞뒤 공백 제거
-
     Args:
-        text: '항목 : 값' 형태의 원본 문자열
-            예: "관중수 : 10,519", "온도 : 25°C"
-        remove_char: 값에서 제거할 단위 문자
-            예: "%", "°C", ","
+        text: '항목 : 값' 형태의 원본 문자열 (예: "관중수 : 10,519", "온도 : 25°C")
+        remove_char: 값에서 제거할 단위 문자 (예: "%", "°C", ",")
 
     Returns:
         정제된 값 문자열
@@ -240,45 +263,111 @@ def extract_value(text: str, remove_char: str = "") -> str:
         '10519'
         >>> extract_value("온도 : 25°C", "°C")
         '25'
-        >>> extract_value("습도 : 60%", "%")
-        '60'
     """
-    # 콜론 기준 분리 후 마지막 값 선택
     value = text.split(':')[-1]
-
-    # 지정된 문자 제거
     if remove_char:
         value = value.replace(remove_char, '')
-
-    # 앞뒤 공백 제거
     return value.strip()
 
 
 def calculate_points_from_record(text: str) -> int:
-    """'0승 0무 0패' 텍스트에서 승점을 계산 (승*3 + 무*1)
-    
+    """'0승 0무 0패' 텍스트에서 승점을 계산합니다 (승*3 + 무*1).
+
     Args:
         text: 전적 정보가 포함된 원본 텍스트 (예: "3위 2승 1무 0패")
-        
+
     Returns:
-        int: 계산된 승점
+        계산된 승점 (패턴을 찾지 못한 경우 0)
     """
-    # 정규표현식으로 숫자 추출: (\d+)승, (\d+)무
     match = re.search(r'(\d+)승\s*(\d+)무\s*(\d+)패', text)
-    
+
     if match:
         wins = int(match.group(1))
         draws = int(match.group(2))
-        # losses = int(match.group(3)) # 패배는 승점에 영향 없음
-        
-        return (wins * 3) + (draws * 1)
-            
-    return 0  # 패턴을 찾지 못한 경우 0점 반환
+        return wins * 3 + draws
+
+    return 0
 
 
 # ============================================================================
 # 데이터 파싱 함수 (Data Parsing Functions)
 # ============================================================================
+
+
+def _parse_league_and_round(soup: BeautifulSoup, data: Dict[str, Any]) -> None:
+    """리그명과 라운드 정보를 추출합니다."""
+    tag = soup.select_one(CSSSelectors.LEAGUE_NAME)
+    if tag:
+        data[MatchDataKeys.LEAGUE_NAME] = tag.text.strip()
+
+    tag = soup.select_one(CSSSelectors.ROUND)
+    if tag:
+        data[MatchDataKeys.ROUND] = tag.text.strip()
+
+
+def _parse_datetime(soup: BeautifulSoup, data: Dict[str, Any]) -> None:
+    """경기 일시 및 요일을 추출합니다."""
+    tag = soup.select_one(CSSSelectors.MATCH_DATETIME)
+    if tag:
+        parts = tag.text.split()
+        # 날짜와 시간 조합 후 ISO 형식 변환
+        data[MatchDataKeys.GAME_DATETIME] = f"{parts[0]} {parts[-1]}:00".replace("/", "-")
+        # 요일 추출: "(토)" → "토"
+        data[MatchDataKeys.DAY] = parts[1].strip("()")
+
+
+def _parse_teams(soup: BeautifulSoup, data: Dict[str, Any]) -> None:
+    """홈팀과 어웨이팀 정보를 추출합니다."""
+    tag = soup.select_one(CSSSelectors.TEAM_INFO)
+    if tag:
+        teams = tag.text.split(' ')[0].strip()
+        if 'vs' in teams:
+            data[MatchDataKeys.HOME_TEAM], data[MatchDataKeys.AWAY_TEAM] = teams.split('vs')
+
+
+def _parse_team_rankings(soup: BeautifulSoup, data: Dict[str, Any]) -> None:
+    """팀 순위 및 승점 정보를 추출합니다."""
+    tag = soup.select_one(CSSSelectors.TEAM_RANK)
+    if not tag:
+        return
+
+    tags = tag.select(CSSSelectors.TEAM_RANK_SPANS)
+    if len(tags) >= 2:
+        # 홈팀 순위
+        home_rank = tags[0].text.replace("위", "").strip()
+        if home_rank.isdigit():
+            data[MatchDataKeys.HOME_RANK] = int(home_rank)
+
+        # 어웨이팀 순위
+        away_rank = tags[1].text.replace("위", "").strip()
+        if away_rank.isdigit():
+            data[MatchDataKeys.AWAY_RANK] = int(away_rank)
+
+        # 승점 계산
+        home_text = tags[0].parent.text
+        data[MatchDataKeys.HOME_POINTS] = calculate_points_from_record(home_text)
+
+        away_text = tags[1].parent.text
+        data[MatchDataKeys.AWAY_POINTS] = calculate_points_from_record(away_text)
+
+
+def _parse_stadium_info(soup: BeautifulSoup, data: Dict[str, Any]) -> None:
+    """경기장 및 환경 정보를 추출합니다."""
+    tags = soup.select(CSSSelectors.STADIUM_INFO)
+
+    for tag in tags:
+        text = tag.text
+
+        if "관중수" in text:
+            data[MatchDataKeys.AUDIENCE_QTY] = extract_value(text, ',')
+        elif "경기장" in text:
+            data[MatchDataKeys.FIELD_NAME] = extract_value(text)
+        elif "날씨" in text:
+            data[MatchDataKeys.WEATHER] = extract_value(text)
+        elif "온도" in text:
+            data[MatchDataKeys.TEMPERATURE] = extract_value(text, '°C')
+        elif "습도" in text:
+            data[MatchDataKeys.HUMIDITY] = extract_value(text, '%')
 
 
 def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, Any]:
@@ -290,13 +379,6 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
         - 팀 정보: <select id="gameId"> 선택된 <option>
         - 순위 정보: <ul class="compare"> 내부 <span class="font-red">
         - 경기장/날씨: <ul class="game-sub-info"> 내부 <li> 리스트
-
-    데이터 추출 전략:
-        1. 기본 구조 초기화 (모든 필드 기본값 설정)
-        2. CSS Selector로 각 요소 탐색
-        3. 요소 존재 여부 검증
-        4. 텍스트 정제 및 타입 변환
-        5. 누락 데이터 처리
 
     Args:
         soup: BeautifulSoup으로 파싱된 HTML 객체
@@ -313,9 +395,7 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
         >>> print(data['HomeTeam'], 'vs', data['AwayTeam'])
         울산 vs 포항
     """
-    # ========================================================================
     # 데이터 구조 초기화
-    # ========================================================================
     data: Dict[str, Any] = {
         MatchDataKeys.MEET_YEAR: year,
         MatchDataKeys.LEAGUE_NAME: None,
@@ -336,116 +416,141 @@ def parse_game_info(soup: BeautifulSoup, year: int, game_id: int) -> Dict[str, A
         MatchDataKeys.HUMIDITY: None,
     }
 
-    # ========================================================================
-    # 리그명 추출
-    # ========================================================================
-    tag = soup.select_one(CSSSelectors.LEAGUE_NAME)
-    if tag:
-        data[MatchDataKeys.LEAGUE_NAME] = tag.text.strip()
-    else:
-        print("❌ 리그명 정보를 찾을 수 없습니다.")
-
-    # ========================================================================
-    # 라운드 추출
-    # ========================================================================
-    tag = soup.select_one(CSSSelectors.ROUND)
-    if tag:
-        data[MatchDataKeys.ROUND] = tag.text.strip()
-    else:
-        print("❌ 라운드 정보를 찾을 수 없습니다.")
-
-    # ========================================================================
-    # 경기 일시 및 요일 추출
-    # ========================================================================
-    # 입력 형식: "2025/03/01 (토) 14:00"
-    # 출력 형식: "2025-03-01 14:00:00" (ISO 8601)
-    tag = soup.select_one(CSSSelectors.MATCH_DATETIME)
-    if tag:
-        parts = tag.text.split()
-
-        # 날짜와 시간 조합 후 ISO 형식 변환
-        # "2025/03/01 14:00" → "2025-03-01 14:00:00"
-        data[MatchDataKeys.GAME_DATETIME] = f"{parts[0]} {parts[-1]}:00".replace("/", "-")
-
-        # 요일 추출: "(토)" → "토"
-        data[MatchDataKeys.DAY] = parts[1].strip("()")
-    else:
-        print("❌ 일시 정보를 찾을 수 없습니다.")
-
-    # ========================================================================
-    # 홈팀 vs 어웨이팀 추출
-    # ========================================================================
-    # 입력 형식: "울산vs포항 (14:00)"
-    # 파싱: "울산vs포항" → ["울산", "포항"]
-    tag = soup.select_one(CSSSelectors.TEAM_INFO)
-    if tag:
-        # 첫 번째 공백 전까지가 팀 정보 (시간 제거)
-        teams = tag.text.split(' ')[0].strip()
-
-        # "vs"로 분리
-        if 'vs' in teams:
-            data[MatchDataKeys.HOME_TEAM], data[MatchDataKeys.AWAY_TEAM] = teams.split('vs')
-    else:
-        print("❌ 팀 정보를 찾을 수 없습니다.")
-
-    # ========================================================================
-    # 팀 순위 및 승점 추출
-    # ========================================================================
-    tag = soup.select_one(CSSSelectors.TEAM_RANK)
-
-    if tag:
-        # 순위 텍스트를 가진 모든 span 찾기
-        tags = tag.select(CSSSelectors.TEAM_RANK_SPANS)
-
-        # 최소 2개의 순위 정보 필요
-        if len(tags) >= 2:
-            # 홈팀 순위: "1위" → "1" → 1
-            home_rank = tags[0].text.replace("위", "").strip()
-            if home_rank.isdigit():
-                data[MatchDataKeys.HOME_RANK] = int(home_rank)
-
-            # 어웨이팀 순위: "3위" → "3" → 3
-            away_rank = tags[1].text.replace("위", "").strip()
-            if away_rank.isdigit():
-                data[MatchDataKeys.AWAY_RANK] = int(away_rank)
-
-            # 홈팀 텍스트 추출 (첫 번째 순위 정보의 부모 텍스트)
-            home_text = tags[0].parent.text
-            data[MatchDataKeys.HOME_POINTS] = calculate_points_from_record(home_text)
-            
-            # 어웨이팀 텍스트 추출 (두 번째 순위 정보의 부모 텍스트)
-            away_text = tags[1].parent.text
-            data[MatchDataKeys.AWAY_POINTS] = calculate_points_from_record(away_text)
-        
-        else:
-            # 순위 정보가 없는 경우 (시즌 초반 등) 0점 처리
-            data[MatchDataKeys.HOME_POINTS] = 0
-            data[MatchDataKeys.AWAY_POINTS] = 0
-
-    # ========================================================================
-    # 경기장 정보 및 환경 데이터 추출
-    # ========================================================================
-    tags = soup.select(CSSSelectors.STADIUM_INFO)
-
-    for tag in tags:
-        text = tag.text
-
-        # 키워드 매칭으로 데이터 분류
-        if "관중수" in text:
-            data[MatchDataKeys.AUDIENCE_QTY] = extract_value(text, ',')
-        elif "경기장" in text:
-            data[MatchDataKeys.FIELD_NAME] = extract_value(text)
-        elif "날씨" in text:
-            data[MatchDataKeys.WEATHER] = extract_value(text)
-        elif "온도" in text:
-            data[MatchDataKeys.TEMPERATURE] = extract_value(text, '°C')
-        elif "습도" in text:
-            data[MatchDataKeys.HUMIDITY] = extract_value(text, '%')
-        else:
-            # 예상치 못한 정보 발견
-            print(f"⚠️ 알 수 없는 정보: {tag.text}")
+    # 각 섹션별로 데이터 추출
+    _parse_league_and_round(soup, data)
+    _parse_datetime(soup, data)
+    _parse_teams(soup, data)
+    _parse_team_rankings(soup, data)
+    _parse_stadium_info(soup, data)
 
     return data
+
+
+# ============================================================================
+# API 데이터 수집 함수 (API Data Collection Functions)
+# ============================================================================
+
+
+def _fetch_kleague_api(
+    url: str,
+    year: int,
+    meet_seq: int,
+    game_id: int
+) -> Optional[Dict[str, Any]]:
+    """K리그 API 공통 호출 함수.
+
+    Args:
+        url: API 엔드포인트 URL
+        year: 시즌 연도
+        meet_seq: 리그 코드
+        game_id: 경기 ID
+
+    Returns:
+        API 응답 데이터, 실패 시 None
+    """
+    payload = {"year": str(year), "meetSeq": str(meet_seq), "gameId": str(game_id)}
+    response = fetch_api(url, payload, headers=DEFAULT_HEADERS)
+
+    if not response or response.get("resultCode") != "200" or "data" not in response:
+        return None
+
+    return response["data"]
+
+
+def get_match_record(year: int, meet_seq: int, game_id: int) -> Optional[Dict[str, Any]]:
+    """K리그 경기 기본 기록(슈팅, 파울 등)을 API에서 가져옵니다.
+
+    matchRecord.do API를 호출하여 다음 데이터를 수집합니다:
+        - possession: 점유율
+        - attempts: 슈팅 시도
+        - onTarget: 유효 슈팅
+        - fouls: 파울
+        - yellowCards, redCards, doubleYellowCards: 카드
+        - corners: 코너킥
+        - freeKicks: 프리킥
+        - offsides: 오프사이드
+
+    Args:
+        year: 시즌 연도 (예: 2025)
+        meet_seq: 리그 코드 (1: K리그1, 2: K리그2)
+        game_id: 경기 ID
+
+    Returns:
+        홈/어웨이 팀별 기록 딕셔너리, 실패 시 None
+    """
+    records = _fetch_kleague_api(URLConfig.MATCH_RECORD_API, year, meet_seq, game_id)
+    if not records:
+        return None
+
+    match_stats = {}
+    for team_type in ["home", "away"]:
+        team_data = records.get(team_type, {})
+        for field in APIConfig.MATCH_RECORD_FIELDS:
+            value = team_data.get(field, 0)
+            key_name = f"{team_type}_{to_snake_case(field)}"
+            match_stats[key_name] = value
+
+    return match_stats
+
+
+def get_possession(year: int, meet_seq: int, game_id: int) -> Optional[Dict[str, float]]:
+    """K리그 경기 시간대별 점유율을 API에서 가져옵니다.
+
+    possession.do API를 호출하여 15분 단위 점유율을 수집합니다:
+        - first_15, first_30, first_45: 전반 점유율
+        - second_15, second_30, second_45: 후반 점유율
+
+    Args:
+        year: 시즌 연도 (예: 2025)
+        meet_seq: 리그 코드 (1: K리그1, 2: K리그2)
+        game_id: 경기 ID
+
+    Returns:
+        홈/어웨이 팀별 시간대별 점유율 딕셔너리, 실패 시 None
+    """
+    possession_data = _fetch_kleague_api(URLConfig.POSSESSION_API, year, meet_seq, game_id)
+    if not possession_data:
+        return None
+
+    possession_stats = {}
+    for team_type in ["home", "away"]:
+        team_stats = possession_data.get(team_type, {})
+        for field in APIConfig.POSSESSION_FIELDS:
+            raw_value = team_stats.get(field, "0")
+            if not raw_value:
+                raw_value = "0"
+
+            # 키 이름 충돌 방지를 위해 _possession 접미사 추가
+            key_name = f"{team_type}_{field}_possession"
+            possession_stats[key_name] = float(raw_value)
+
+    return possession_stats
+
+
+def get_match_stats(year: int, meet_seq: int, game_id: int) -> Optional[Dict[str, Any]]:
+    """모든 경기 통계 데이터를 수집하여 하나의 딕셔너리로 병합합니다.
+
+    matchRecord.do와 possession.do API를 모두 호출하여 통합합니다.
+
+    Args:
+        year: 시즌 연도 (예: 2025)
+        meet_seq: 리그 코드 (1: K리그1, 2: K리그2)
+        game_id: 경기 ID
+
+    Returns:
+        통합된 경기 통계 딕셔너리, 기본 기록 실패 시 None
+    """
+    basic_records = get_match_record(year, meet_seq, game_id)
+    if not basic_records:
+        return None
+
+    stats = basic_records.copy()
+
+    possession_records = get_possession(year, meet_seq, game_id)
+    if possession_records:
+        stats.update(possession_records)
+
+    return stats
 
 
 # ============================================================================
@@ -457,99 +562,50 @@ def collect_kleague_match_data(
     year: int | List[int],
     league: str | List[str] = "K리그1"
 ) -> Tuple[List[Dict[str, Any]], str]:
-    """K리그 경기 데이터 수집 (최상위 공개 API)
+    """K리그 경기 데이터를 수집합니다.
 
-    경기 ID 기반 순차 접근 방식:
-        - K리그는 각 시즌의 경기에 1부터 N까지 순차 ID 할당
-        - URL 패턴: www.kleague.com/match.do?year={year}&meetSeq={league}&gameId={id}
-        - BeautifulSoup으로 정적 HTML 파싱
-
-    사용 예시:
-        # 단일 연도, 단일 리그
-        >>> data, filename = collect_kleague_match_data(2025, "K리그1")
-        >>> print(filename)
-        'kleague1_match_2025'
-        >>> print(len(data))
-        228
-
-        # 여러 연도, 여러 리그
-        >>> data, filename = collect_kleague_match_data(
-        ...     year=[2023, 2025],
-        ...     league=["K리그1", "K리그2"]
-        ... )
-        >>> print(filename)
-        'kleague_match_2023-2025'
-
-        # 승강 플레이오프만 수집
-        >>> data, filename = collect_kleague_match_data(2024, "승강PO")
-        >>> print(len(data))
-        4
+    K리그는 각 시즌의 경기에 1부터 N까지 순차 ID를 할당합니다.
+    BeautifulSoup으로 HTML을 파싱하고, API를 통해 상세 통계를 수집합니다.
 
     Args:
-        year: 수집 시즌 연도 (2013년 이후 지원)
+        year: 수집 시즌 연도 (단일 연도 또는 리스트)
             - int: 단일 연도 (예: 2025)
-            - List[int]: 연도 범위 (예: [2023, 2025] → 2023, 2024, 2025)
+            - List[int]: 연도 범위 (예: [2023, 2025] → 2023~2025)
         league: 수집 리그 (기본값: "K리그1")
             - str: 단일 리그
             - List[str]: 여러 리그 (예: ["K리그1", "K리그2"])
-            - 지원 리그:
-                * "K리그1": 하나원큐 K리그1 (1부 리그)
-                * "K리그2": 하나원큐 K리그2 (2부 리그)
-                * "승강PO": 승강 플레이오프
-                * "슈퍼컵": FA컵 우승팀 vs K리그 우승팀
+            - 지원 리그: "K리그1", "K리그2", "승강PO", "슈퍼컵"
 
     Returns:
-        Tuple[List[Dict[str, Any]], str]:
-            - 수집된 경기 데이터 리스트
-            - 파일 저장용 파일명 (확장자 제외)
-                형식: "{리그}_match_{연도}"
-                예: "kleague1_match_2025", "kleague_match_2023-2025"
+        Tuple[수집된 경기 데이터 리스트, 파일명]
+            - 파일명 형식: "{리그}_match_{연도}"
 
-    Raises:
-        ValueError: 지원하지 않는 리그명 (암묵적, 경고 메시지 출력)
-
-    Note:
-        - 경기가 존재하지 않는 ID는 자동 건너뜀 (fetch_page가 None 반환)
-        - fetch_page 실패 시 해당 경기는 dataset에 미포함
-        - 수집 진행률은 Rich 라이브러리로 실시간 표시
-        - J리그와 달리 트래킹 데이터 없음 (K리그 미제공)
+    Example:
+        >>> data, filename = collect_kleague_match_data(2025, "K리그1")
+        >>> print(len(data), filename)
+        228 kleague1_match_2025
     """
-    # ========================================================================
     # 입력 파라미터 정규화
-    # ========================================================================
-
-    # 리그 파라미터를 리스트로 변환
     if isinstance(league, str):
         leagues: List[str] = [league]
-        # 파일명용 레이블: "K리그1" → "kleague1"
         league_label: str = league.replace("K리그", "kleague")
     else:
         leagues = league
-        # 여러 리그: 통합 레이블
         league_label = "kleague"
 
-    # 연도 파라미터를 리스트로 변환 및 범위 확장
     if isinstance(year, int):
         years: List[int] = [year]
         year_label: str = str(year)
     else:
-        # [2023, 2025] → [2023, 2024, 2025]
         years = list(range(min(year), max(year) + 1))
         year_label = f"{min(year)}-{max(year)}"
 
-    # Rich 콘솔 초기화
     console = Console()
-
-    # ========================================================================
-    # 데이터 수집 (리그 × 연도 × 경기 ID)
-    # ========================================================================
     dataset: List[Dict[str, Any]] = []
 
     for league_name in leagues:
-        # 리그명 → API 코드 변환
         meet_seq = LEAGUE_NAME_TO_CODE.get(league_name)
 
-        # 입력 검증: 지원하지 않는 리그명
         if meet_seq is None:
             print(
                 f"⛔ 지원하지 않는 리그: {league_name}\n"
@@ -558,20 +614,16 @@ def collect_kleague_match_data(
             continue
 
         for year_val in years:
-            # 해당 리그와 연도의 총 경기 수 조회 (기본값: 228)
             total_games = SEASON_MATCH_COUNT.get((league_name, year_val), 228)
             games = range(1, total_games + 1)
 
-            # 수집 시작 안내
             console.print(
                 f"\n[bold magenta][{year_val}년 {league_name} 경기 데이터][/bold magenta] "
                 f"(총 {len(games)}경기)",
                 style="bold"
             )
 
-            # 각 경기 데이터 수집 (진행률 표시)
             for game_id in track(games, description=f"[cyan]수집 현황:[/cyan]"):
-                # K리그 경기 페이지 URL 생성
                 url = URLConfig.MATCH_DETAIL.format(
                     year=year_val,
                     meet_seq=meet_seq,
@@ -580,25 +632,21 @@ def collect_kleague_match_data(
                 )
 
                 try:
-                    # HTML 페이지 다운로드 및 파싱
                     soup = fetch_page(url)
 
-                    # 페이지가 정상 로드된 경우에만 파싱
                     if soup:
                         data = parse_game_info(soup, year_val, game_id)
+                        stats = get_match_stats(year_val, meet_seq, game_id)
+                        if stats:
+                            data.update(stats)
                         dataset.append(data)
-                    # soup이 None인 경우 (404, 타임아웃 등) 자동 건너뜀
 
                 except Exception as e:
-                    # 예상치 못한 에러 발생 시 로그 출력 후 계속
                     print(
                         f"⛔ 데이터 수집 실패 (year={year_val}, gameId={game_id}): "
                         f"{type(e).__name__} - {e}"
                     )
 
-    # ========================================================================
-    # 결과 반환
-    # ========================================================================
     file_name = f"{league_label}_match_{year_label}"
     console.print(
         f"\n[bold green]✅ 수집 완료: {len(dataset)}경기, 파일명: {file_name}[/bold green]"
