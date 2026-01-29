@@ -1,5 +1,6 @@
 import os
 import requests
+from typing import Any, Dict, Optional
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -14,6 +15,45 @@ load_dotenv()
 USER_AGENT = {
     "User-Agent": os.getenv("USER_AGENT")
 }
+
+
+def fetch_api(
+    url: str,
+    payload: Dict[str, Any],
+    headers: Optional[Dict[str, str]] = None,
+    method: str = "POST"
+) -> Optional[Dict[str, Any]]:
+    """
+    API 엔드포인트에 요청을 보내고 JSON 응답을 반환합니다.
+
+    Args:
+        url: API 엔드포인트 URL
+        payload: 요청 파라미터 (POST 데이터 또는 쿼리 파라미터)
+        headers: HTTP 헤더 (기본값: USER_AGENT)
+        method: HTTP 메서드 ("POST" 또는 "GET")
+
+    Returns:
+        Optional[Dict[str, Any]]: 파싱된 JSON 응답, 실패 시 None
+    """
+    headers = headers or USER_AGENT
+
+    try:
+        if method.upper() == "POST":
+            response = requests.post(url, data=payload, headers=headers)
+        else:
+            response = requests.get(url, params=payload, headers=headers)
+
+        response.raise_for_status()
+        return response.json()
+
+    except requests.exceptions.HTTPError as e:
+        print(f"⛔ HTTP 에러 발생: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"⛔ 네트워크 에러 발생: {e}")
+    except ValueError as e:
+        print(f"⛔ JSON 파싱 에러: {e}")
+
+    return None
 
 
 def fetch_page(url: str, headers: dict | None = None) -> BeautifulSoup | None:
