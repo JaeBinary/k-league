@@ -192,6 +192,8 @@ K리그 웹사이트 URL 템플릿
 class URLConfig:
     BASE_URL = "https://www.kleague.com"
     MATCH_DETAIL = "{BASE_URL}/match.do?year={year}&meetSeq={meet_seq}&gameId={game_id}&startTabNum={start_tab_num}"
+    MATCH_RECORD_API = "{BASE_URL}/api/ddf/match/matchRecord.do"
+    POSSESSION_API = "{BASE_URL}/api/ddf/match/possession.do"
 ```
 
 ### LeagueCode
@@ -221,6 +223,8 @@ class MatchDataKeys:
     AWAY_TEAM = "AwayTeam"
     HOME_RANK = "HomeRank"
     AWAY_RANK = "AwayRank"
+    HOME_POINTS = "HomePoints"
+    AWAY_POINTS = "AwayPoints"
     FIELD_NAME = "Field_Name"
     AUDIENCE_QTY = "Audience_Qty"
     WEATHER = "Weather"
@@ -240,6 +244,267 @@ BeautifulSoup CSS 선택자 패턴
 | `TEAM_INFO` | `#gameId option[selected]` | 팀 정보 추출 |
 | `TEAM_RANK` | `#tab03 ul.compare > li` | 팀 순위 추출 |
 | `STADIUM_INFO` | `ul.game-sub-info.sort-box li` | 경기장/날씨 정보 추출 |
+
+---
+
+### APIConfig
+
+K리그 API 요청 설정
+
+```python
+class APIConfig:
+    # matchRecord.do에서 가져올 필드들
+    MATCH_RECORD_FIELDS = [
+        "possession", "attempts", "onTarget", "fouls",
+        "yellowCards", "redCards", "doubleYellowCards",
+        "corners", "freeKicks", "offsides"
+    ]
+    # possession.do에서 가져올 필드들
+    POSSESSION_FIELDS = [
+        "first_15", "first_30", "first_45",
+        "second_15", "second_30", "second_45"
+    ]
+```
+
+---
+
+## API 데이터 수집 함수
+
+K리그 공식 API를 통해 경기 통계 데이터를 수집하는 함수들입니다.
+
+### get_match_record
+
+K리그 경기 기본 기록(슈팅, 파울 등)을 API에서 가져옵니다.
+
+#### 시그니처
+
+```python
+def get_match_record(
+    year: int,
+    meet_seq: int,
+    game_id: int
+) -> Optional[Dict[str, Any]]
+```
+
+#### 파라미터
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| `year` | `int` | 시즌 연도 (예: 2025) |
+| `meet_seq` | `int` | 리그 코드 (1: K리그1, 2: K리그2) |
+| `game_id` | `int` | 경기 ID |
+
+#### 반환값
+
+홈/어웨이 팀별 기록 딕셔너리, 실패 시 None
+
+#### 수집 데이터
+
+- `possession`: 점유율
+- `attempts`: 슈팅 시도
+- `onTarget`: 유효 슈팅
+- `fouls`: 파울
+- `yellowCards`, `redCards`, `doubleYellowCards`: 카드
+- `corners`: 코너킥
+- `freeKicks`: 프리킥
+- `offsides`: 오프사이드
+
+#### 반환 형식
+
+```python
+{
+    'home_possession': 55,
+    'away_possession': 45,
+    'home_attempts': 15,
+    'away_attempts': 8,
+    'home_on_target': 6,
+    'away_on_target': 3,
+    'home_fouls': 12,
+    'away_fouls': 14,
+    'home_yellow_cards': 2,
+    'away_yellow_cards': 3,
+    'home_red_cards': 0,
+    'away_red_cards': 1,
+    'home_double_yellow_cards': 0,
+    'away_double_yellow_cards': 0,
+    'home_corners': 5,
+    'away_corners': 3,
+    'home_free_kicks': 18,
+    'away_free_kicks': 15,
+    'home_offsides': 2,
+    'away_offsides': 1
+}
+```
+
+---
+
+### get_possession
+
+K리그 경기 시간대별 점유율을 API에서 가져옵니다.
+
+#### 시그니처
+
+```python
+def get_possession(
+    year: int,
+    meet_seq: int,
+    game_id: int
+) -> Optional[Dict[str, float]]
+```
+
+#### 파라미터
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| `year` | `int` | 시즌 연도 (예: 2025) |
+| `meet_seq` | `int` | 리그 코드 (1: K리그1, 2: K리그2) |
+| `game_id` | `int` | 경기 ID |
+
+#### 반환값
+
+홈/어웨이 팀별 시간대별 점유율 딕셔너리, 실패 시 None
+
+#### 수집 데이터
+
+15분 단위 점유율:
+- `first_15`, `first_30`, `first_45`: 전반 점유율
+- `second_15`, `second_30`, `second_45`: 후반 점유율
+
+#### 반환 형식
+
+```python
+{
+    'home_first_15_possession': 52.3,
+    'home_first_30_possession': 54.1,
+    'home_first_45_possession': 55.8,
+    'home_second_15_possession': 48.2,
+    'home_second_30_possession': 50.5,
+    'home_second_45_possession': 53.7,
+    'away_first_15_possession': 47.7,
+    'away_first_30_possession': 45.9,
+    'away_first_45_possession': 44.2,
+    'away_second_15_possession': 51.8,
+    'away_second_30_possession': 49.5,
+    'away_second_45_possession': 46.3
+}
+```
+
+---
+
+### get_match_stats
+
+모든 경기 통계 데이터를 수집하여 하나의 딕셔너리로 병합합니다.
+
+#### 시그니처
+
+```python
+def get_match_stats(
+    year: int,
+    meet_seq: int,
+    game_id: int
+) -> Optional[Dict[str, Any]]
+```
+
+#### 파라미터
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| `year` | `int` | 시즌 연도 (예: 2025) |
+| `meet_seq` | `int` | 리그 코드 (1: K리그1, 2: K리그2) |
+| `game_id` | `int` | 경기 ID |
+
+#### 반환값
+
+통합된 경기 통계 딕셔너리, 기본 기록 실패 시 None
+
+#### 설명
+
+이 함수는 `get_match_record()`와 `get_possession()`을 모두 호출하여 결과를 통합합니다.
+
+- `get_match_record()` 실패 시: None 반환
+- `get_possession()` 실패 시: 기본 기록만 반환
+
+#### 사용 예제
+
+```python
+from src.scraper.kleague_match_scraper import get_match_stats
+
+# 2025년 K리그1 1번 경기 통계 조회
+stats = get_match_stats(year=2025, meet_seq=1, game_id=1)
+
+if stats:
+    print(f"점유율: {stats['home_possession']}% vs {stats['away_possession']}%")
+    print(f"슈팅: {stats['home_attempts']} vs {stats['away_attempts']}")
+    print(f"유효 슈팅: {stats['home_on_target']} vs {stats['away_on_target']}")
+```
+
+---
+
+### to_snake_case
+
+카멜케이스(camelCase)를 스네이크케이스(snake_case)로 변환합니다.
+
+#### 시그니처
+
+```python
+def to_snake_case(name: str) -> str
+```
+
+#### 파라미터
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| `name` | `str` | 변환할 카멜케이스 문자열 |
+
+#### 반환값
+
+스네이크케이스 문자열
+
+#### 사용 예제
+
+```python
+from src.scraper.kleague_match_scraper import to_snake_case
+
+print(to_snake_case("yellowCards"))  # "yellow_cards"
+print(to_snake_case("onTarget"))     # "on_target"
+print(to_snake_case("freeKicks"))    # "free_kicks"
+```
+
+---
+
+### calculate_points_from_record
+
+'0승 0무 0패' 텍스트에서 승점을 계산합니다 (승*3 + 무*1).
+
+#### 시그니처
+
+```python
+def calculate_points_from_record(text: str) -> int
+```
+
+#### 파라미터
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| `text` | `str` | 전적 정보가 포함된 원본 텍스트 |
+
+#### 반환값
+
+계산된 승점 (패턴을 찾지 못한 경우 0)
+
+#### 사용 예제
+
+```python
+from src.scraper.kleague_match_scraper import calculate_points_from_record
+
+# "3위 2승 1무 0패" → 승점 7 (2*3 + 1*1)
+points = calculate_points_from_record("3위 2승 1무 0패")
+print(points)  # 7
+
+# "1위 5승 0무 1패" → 승점 15 (5*3 + 0*1)
+points = calculate_points_from_record("1위 5승 0무 1패")
+print(points)  # 15
+```
 
 ---
 
