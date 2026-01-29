@@ -140,12 +140,34 @@ save_to_csv(data, filename)
 
 ### K리그 전용 필드
 
+#### 기본 필드
+
 | 필드 | 설명 |
 |-----|------|
 | `Game_id` | 경기 ID |
 | `HomeRank` | 홈팀 순위 |
 | `AwayRank` | 어웨이팀 순위 |
+| `HomePoints` | 홈팀 승점 |
+| `AwayPoints` | 어웨이팀 승점 |
 | `Field_Name` | 경기장명 |
+
+#### API 통계 데이터
+
+K리그 공식 API를 통해 수집되는 추가 통계 데이터:
+
+**기본 기록**
+- 점유율 (`home_possession`, `away_possession`)
+- 슈팅 (`home_attempts`, `away_attempts`, `home_on_target`, `away_on_target`)
+- 파울 (`home_fouls`, `away_fouls`)
+- 카드 (`home_yellow_cards`, `away_yellow_cards`, `home_red_cards`, `away_red_cards`, `home_double_yellow_cards`, `away_double_yellow_cards`)
+- 코너킥 (`home_corners`, `away_corners`)
+- 프리킥 (`home_free_kicks`, `away_free_kicks`)
+- 오프사이드 (`home_offsides`, `away_offsides`)
+
+**시간대별 점유율**
+- 전반: `home_first_15_possession`, `home_first_30_possession`, `home_first_45_possession`
+- 후반: `home_second_15_possession`, `home_second_30_possession`, `home_second_45_possession`
+- 어웨이팀도 동일한 구조
 
 ### J리그 전용 필드 (트래킹 데이터)
 
